@@ -117,9 +117,6 @@ def build_message(ctx: NotifyContext, recipient: Employee) -> str:
             f"4) Post progress updates via POST $BASE/task-comments (same headers)\n"
             f"5) When complete: curl -sS -X PATCH $BASE/tasks/{t.id} -H 'X-Actor-Employee-Id: {recipient.id}' "
             "-H 'Content-Type: application/json' -d '{\"status\":\"done\"}' and post a final summary comment"
-            f"-H 'X-Actor-Employee-Id: {recipient.id}' "
-            "-H 'Content-Type: application/json' "
-            '-d \'{"status":"done"}\' and post a final summary comment'
             f"{desc_block}"
         )
 
