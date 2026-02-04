@@ -7,6 +7,7 @@ from sqlmodel import SQLModel
 
 
 class AgentBase(SQLModel):
+    board_id: UUID | None = None
     name: str
     status: str = "provisioning"
 
@@ -16,6 +17,7 @@ class AgentCreate(AgentBase):
 
 
 class AgentUpdate(SQLModel):
+    board_id: UUID | None = None
     name: str | None = None
     status: str | None = None
 
@@ -34,3 +36,4 @@ class AgentHeartbeat(SQLModel):
 
 class AgentHeartbeatCreate(AgentHeartbeat):
     name: str
+    board_id: UUID | None = None

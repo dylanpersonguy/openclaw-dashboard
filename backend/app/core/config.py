@@ -19,12 +19,6 @@ class Settings(BaseSettings):
     clerk_verify_iat: bool = True
     clerk_leeway: float = 10.0
 
-    # OpenClaw Gateway
-    openclaw_gateway_url: str = ""
-    openclaw_gateway_token: str = ""
-    openclaw_main_session_key: str = "agent:main:main"
-    openclaw_workspace_root: str = "~/.openclaw/workspaces"
-
     cors_origins: str = ""
     base_url: str = ""
 

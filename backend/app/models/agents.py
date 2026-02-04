@@ -10,6 +10,7 @@ class Agent(SQLModel, table=True):
     __tablename__ = "agents"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    board_id: UUID | None = Field(default=None, foreign_key="boards.id", index=True)
     name: str = Field(index=True)
     status: str = Field(default="provisioning", index=True)
     openclaw_session_id: str | None = Field(default=None, index=True)

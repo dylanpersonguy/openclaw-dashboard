@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, col, select
@@ -11,9 +11,9 @@ from sqlalchemy import update
 from app.api.deps import ActorContext, require_admin_auth, require_admin_or_agent
 from app.core.agent_tokens import generate_agent_token, hash_agent_token
 from app.core.auth import AuthContext
-from app.core.config import settings
 from app.db.session import get_session
 from app.integrations.openclaw_gateway import (
+    GatewayConfig,
     OpenClawGatewayError,
     delete_session,
     ensure_session,
@@ -21,6 +21,7 @@ from app.integrations.openclaw_gateway import (
 )
 from app.models.agents import Agent
 from app.models.activity_events import ActivityEvent
+from app.models.boards import Board
 from app.schemas.agents import (
     AgentCreate,
     AgentHeartbeat,
@@ -46,10 +47,34 @@ def _build_session_key(agent_name: str) -> str:
     return f"{AGENT_SESSION_PREFIX}:{_slugify(agent_name)}:main"
 
 
-async def _ensure_gateway_session(agent_name: str) -> tuple[str, str | None]:
+def _require_board(session: Session, board_id: UUID | str | None) -> Board:
+    if not board_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="board_id is required",
+        )
+    board = session.get(Board, board_id)
+    if board is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    return board
+
+
+def _require_gateway_config(board: Board) -> GatewayConfig:
+    if not board.gateway_url:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Board gateway_url is required",
+        )
+    return GatewayConfig(url=board.gateway_url, token=board.gateway_token)
+
+
+async def _ensure_gateway_session(
+    agent_name: str,
+    config: GatewayConfig,
+) -> tuple[str, str | None]:
     session_key = _build_session_key(agent_name)
     try:
-        await ensure_session(session_key, label=agent_name)
+        await ensure_session(session_key, config=config, label=agent_name)
         return session_key, None
     except OpenClawGatewayError as exc:
         return session_key, str(exc)
@@ -97,11 +122,13 @@ async def create_agent(
     session: Session = Depends(get_session),
     auth: AuthContext = Depends(require_admin_auth),
 ) -> Agent:
+    board = _require_board(session, payload.board_id)
+    config = _require_gateway_config(board)
     agent = Agent.model_validate(payload)
     agent.status = "provisioning"
     raw_token = generate_agent_token()
     agent.agent_token_hash = hash_agent_token(raw_token)
-    session_key, session_error = await _ensure_gateway_session(agent.name)
+    session_key, session_error = await _ensure_gateway_session(agent.name, config)
     agent.openclaw_session_id = session_key
     session.add(agent)
     session.commit()
@@ -122,7 +149,7 @@ async def create_agent(
         )
     session.commit()
     try:
-        await send_provisioning_message(agent, raw_token)
+        await send_provisioning_message(agent, board, raw_token)
     except OpenClawGatewayError as exc:
         _record_provisioning_failure(session, agent, str(exc))
         session.commit()
@@ -160,6 +187,8 @@ def update_agent(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="status is controlled by agent heartbeat",
         )
+    if "board_id" in updates and updates["board_id"]:
+        _require_board(session, str(updates["board_id"]))
     for key, value in updates.items():
         setattr(agent, key, value)
     agent.updated_at = datetime.utcnow()
@@ -204,10 +233,12 @@ async def heartbeat_or_create_agent(
     if agent is None:
         if actor.actor_type == "agent":
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-        agent = Agent(name=payload.name, status="provisioning")
+        board = _require_board(session, payload.board_id)
+        config = _require_gateway_config(board)
+        agent = Agent(name=payload.name, status="provisioning", board_id=board.id)
         raw_token = generate_agent_token()
         agent.agent_token_hash = hash_agent_token(raw_token)
-        session_key, session_error = await _ensure_gateway_session(agent.name)
+        session_key, session_error = await _ensure_gateway_session(agent.name, config)
         agent.openclaw_session_id = session_key
         session.add(agent)
         session.commit()
@@ -228,7 +259,7 @@ async def heartbeat_or_create_agent(
             )
         session.commit()
         try:
-            await send_provisioning_message(agent, raw_token)
+            await send_provisioning_message(agent, board, raw_token)
         except OpenClawGatewayError as exc:
             _record_provisioning_failure(session, agent, str(exc))
             session.commit()
@@ -244,7 +275,9 @@ async def heartbeat_or_create_agent(
         session.commit()
         session.refresh(agent)
         try:
-            await send_provisioning_message(agent, raw_token)
+            board = _require_board(session, str(agent.board_id) if agent.board_id else None)
+            _require_gateway_config(board)
+            await send_provisioning_message(agent, board, raw_token)
         except OpenClawGatewayError as exc:
             _record_provisioning_failure(session, agent, str(exc))
             session.commit()
@@ -252,7 +285,9 @@ async def heartbeat_or_create_agent(
             _record_provisioning_failure(session, agent, str(exc))
             session.commit()
     elif not agent.openclaw_session_id:
-        session_key, session_error = await _ensure_gateway_session(agent.name)
+        board = _require_board(session, str(agent.board_id) if agent.board_id else None)
+        config = _require_gateway_config(board)
+        session_key, session_error = await _ensure_gateway_session(agent.name, config)
         agent.openclaw_session_id = session_key
         if session_error:
             record_activity(
@@ -290,12 +325,16 @@ def delete_agent(
 ) -> dict[str, bool]:
     agent = session.get(Agent, agent_id)
     if agent:
+        board = _require_board(session, str(agent.board_id) if agent.board_id else None)
+        config = _require_gateway_config(board)
         async def _gateway_cleanup() -> None:
             if agent.openclaw_session_id:
-                await delete_session(agent.openclaw_session_id)
-            main_session = settings.openclaw_main_session_key
+                await delete_session(agent.openclaw_session_id, config=config)
+            main_session = board.gateway_main_session_key or "agent:main:main"
             if main_session:
-                workspace_root = settings.openclaw_workspace_root or "~/.openclaw/workspaces"
+                workspace_root = (
+                    board.gateway_workspace_root or "~/.openclaw/workspaces"
+                )
                 workspace_path = f"{workspace_root.rstrip('/')}/{_slugify(agent.name)}"
                 cleanup_message = (
                     "Cleanup request for deleted agent.\n\n"
@@ -308,8 +347,13 @@ def delete_agent(
                     "2) Delete any lingering session artifacts.\n"
                     "Reply NO_REPLY."
                 )
-                await ensure_session(main_session, label="Main Agent")
-                await send_message(cleanup_message, session_key=main_session, deliver=False)
+                await ensure_session(main_session, config=config, label="Main Agent")
+                await send_message(
+                    cleanup_message,
+                    session_key=main_session,
+                    config=config,
+                    deliver=False,
+                )
 
         try:
             import asyncio

@@ -14,6 +14,10 @@ type Board = {
   id: string;
   name: string;
   slug: string;
+  gateway_url?: string | null;
+  gateway_token?: string | null;
+  gateway_main_session_key?: string | null;
+  gateway_workspace_root?: string | null;
 };
 
 const apiBase =
@@ -31,6 +35,10 @@ export default function NewBoardPage() {
   const router = useRouter();
   const { getToken, isSignedIn } = useAuth();
   const [name, setName] = useState("");
+  const [gatewayUrl, setGatewayUrl] = useState("");
+  const [gatewayToken, setGatewayToken] = useState("");
+  const [gatewayMainSessionKey, setGatewayMainSessionKey] = useState("");
+  const [gatewayWorkspaceRoot, setGatewayWorkspaceRoot] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,13 +51,25 @@ export default function NewBoardPage() {
     setError(null);
     try {
       const token = await getToken();
+      const payload: Partial<Board> = {
+        name: trimmed,
+        slug: slugify(trimmed),
+      };
+      if (gatewayUrl.trim()) payload.gateway_url = gatewayUrl.trim();
+      if (gatewayToken.trim()) payload.gateway_token = gatewayToken.trim();
+      if (gatewayMainSessionKey.trim()) {
+        payload.gateway_main_session_key = gatewayMainSessionKey.trim();
+      }
+      if (gatewayWorkspaceRoot.trim()) {
+        payload.gateway_workspace_root = gatewayWorkspaceRoot.trim();
+      }
       const response = await fetch(`${apiBase}/api/v1/boards`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify({ name: trimmed, slug: slugify(trimmed) }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error("Unable to create board.");
@@ -100,6 +120,53 @@ export default function NewBoardPage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="e.g. Product ops"
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">
+                Gateway URL
+              </label>
+              <Input
+                value={gatewayUrl}
+                onChange={(event) => setGatewayUrl(event.target.value)}
+                placeholder="ws://gateway:18789"
+                disabled={isLoading}
+              />
+              <p className="text-xs text-quiet">
+                Required to provision agents for this board.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">
+                Gateway token
+              </label>
+              <Input
+                value={gatewayToken}
+                onChange={(event) => setGatewayToken(event.target.value)}
+                placeholder="Optional bearer token"
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">
+                Main session key
+              </label>
+              <Input
+                value={gatewayMainSessionKey}
+                onChange={(event) => setGatewayMainSessionKey(event.target.value)}
+                placeholder="agent:main:main"
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">
+                Workspace root
+              </label>
+              <Input
+                value={gatewayWorkspaceRoot}
+                onChange={(event) => setGatewayWorkspaceRoot(event.target.value)}
+                placeholder="~/.openclaw/workspaces"
                 disabled={isLoading}
               />
             </div>

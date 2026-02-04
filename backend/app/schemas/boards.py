@@ -9,15 +9,22 @@ from sqlmodel import SQLModel
 class BoardBase(SQLModel):
     name: str
     slug: str
+    gateway_url: str | None = None
+    gateway_main_session_key: str | None = None
+    gateway_workspace_root: str | None = None
 
 
 class BoardCreate(BoardBase):
-    pass
+    gateway_token: str | None = None
 
 
 class BoardUpdate(SQLModel):
     name: str | None = None
     slug: str | None = None
+    gateway_url: str | None = None
+    gateway_token: str | None = None
+    gateway_main_session_key: str | None = None
+    gateway_workspace_root: str | None = None
 
 
 class BoardRead(BoardBase):

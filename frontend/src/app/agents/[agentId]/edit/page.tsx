@@ -9,6 +9,13 @@ import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const apiBase =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
@@ -17,6 +24,13 @@ const apiBase =
 type Agent = {
   id: string;
   name: string;
+  board_id?: string | null;
+};
+
+type Board = {
+  id: string;
+  name: string;
+  slug: string;
 };
 
 export default function EditAgentPage() {
@@ -28,8 +42,30 @@ export default function EditAgentPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [name, setName] = useState("");
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [boardId, setBoardId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadBoards = async () => {
+    if (!isSignedIn) return;
+    try {
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/api/v1/boards`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" },
+      });
+      if (!response.ok) {
+        throw new Error("Unable to load boards.");
+      }
+      const data = (await response.json()) as Board[];
+      setBoards(data);
+      if (!boardId && data.length > 0) {
+        setBoardId(data[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    }
+  };
 
   const loadAgent = async () => {
     if (!isSignedIn || !agentId) return;
@@ -46,6 +82,9 @@ export default function EditAgentPage() {
       const data = (await response.json()) as Agent;
       setAgent(data);
       setName(data.name);
+      if (data.board_id) {
+        setBoardId(data.board_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -54,6 +93,7 @@ export default function EditAgentPage() {
   };
 
   useEffect(() => {
+    loadBoards();
     loadAgent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn, agentId]);
@@ -66,6 +106,10 @@ export default function EditAgentPage() {
       setError("Agent name is required.");
       return;
     }
+    if (!boardId) {
+      setError("Select a board before saving.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -76,7 +120,7 @@ export default function EditAgentPage() {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, board_id: boardId }),
       });
       if (!response.ok) {
         throw new Error("Unable to update agent.");
@@ -126,6 +170,30 @@ export default function EditAgentPage() {
                 placeholder="e.g. Deploy bot"
                 disabled={isLoading}
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">Board</label>
+              <Select
+                value={boardId}
+                onValueChange={(value) => setBoardId(value)}
+                disabled={boards.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select board" />
+                </SelectTrigger>
+                <SelectContent>
+                  {boards.map((board) => (
+                    <SelectItem key={board.id} value={board.id}>
+                      {board.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {boards.length === 0 ? (
+                <p className="text-xs text-quiet">
+                  Create a board before assigning agents.
+                </p>
+              ) : null}
             </div>
             {error ? (
               <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] p-3 text-xs text-muted">

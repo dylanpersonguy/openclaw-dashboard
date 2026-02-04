@@ -31,7 +31,10 @@ def create_board(
     session: Session = Depends(get_session),
     auth: AuthContext = Depends(require_admin_auth),
 ) -> Board:
-    board = Board.model_validate(payload)
+    data = payload.model_dump()
+    if data.get("gateway_token") == "":
+        data["gateway_token"] = None
+    board = Board.model_validate(data)
     session.add(board)
     session.commit()
     session.refresh(board)
@@ -54,6 +57,8 @@ def update_board(
     auth: AuthContext = Depends(require_admin_auth),
 ) -> Board:
     updates = payload.model_dump(exclude_unset=True)
+    if updates.get("gateway_token") == "":
+        updates["gateway_token"] = None
     for key, value in updates.items():
         setattr(board, key, value)
     session.add(board)

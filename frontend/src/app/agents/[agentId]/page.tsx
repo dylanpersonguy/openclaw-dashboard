@@ -31,6 +31,13 @@ type Agent = {
   last_seen_at: string;
   created_at: string;
   updated_at: string;
+  board_id?: string | null;
+};
+
+type Board = {
+  id: string;
+  name: string;
+  slug: string;
 };
 
 type ActivityEvent = {
@@ -74,6 +81,7 @@ export default function AgentDetailPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [boards, setBoards] = useState<Board[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,11 +100,14 @@ export default function AgentDetailPage() {
     setError(null);
     try {
       const token = await getToken();
-      const [agentResponse, activityResponse] = await Promise.all([
+      const [agentResponse, activityResponse, boardsResponse] = await Promise.all([
         fetch(`${apiBase}/api/v1/agents/${agentId}`, {
           headers: { Authorization: token ? `Bearer ${token}` : "" },
         }),
         fetch(`${apiBase}/api/v1/activity?limit=200`, {
+          headers: { Authorization: token ? `Bearer ${token}` : "" },
+        }),
+        fetch(`${apiBase}/api/v1/boards`, {
           headers: { Authorization: token ? `Bearer ${token}` : "" },
         }),
       ]);
@@ -106,10 +117,15 @@ export default function AgentDetailPage() {
       if (!activityResponse.ok) {
         throw new Error("Unable to load activity.");
       }
+      if (!boardsResponse.ok) {
+        throw new Error("Unable to load boards.");
+      }
       const agentData = (await agentResponse.json()) as Agent;
       const eventsData = (await activityResponse.json()) as ActivityEvent[];
+      const boardsData = (await boardsResponse.json()) as Board[];
       setAgent(agentData);
       setEvents(eventsData);
+      setBoards(boardsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -231,6 +247,15 @@ export default function AgentDetailPage() {
                       </p>
                       <p className="mt-1 text-sm text-muted">
                         {agent.openclaw_session_id ?? "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
+                        Board
+                      </p>
+                      <p className="mt-1 text-sm text-strong">
+                        {boards.find((board) => board.id === agent.board_id)?.name ??
+                          "—"}
                       </p>
                     </div>
                     <div>

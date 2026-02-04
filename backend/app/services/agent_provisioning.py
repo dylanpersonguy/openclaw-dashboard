@@ -7,8 +7,9 @@ from uuid import uuid4
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from app.core.config import settings
-from app.integrations.openclaw_gateway import ensure_session, send_message
+from app.integrations.openclaw_gateway import GatewayConfig, ensure_session, send_message
 from app.models.agents import Agent
+from app.models.boards import Board
 
 TEMPLATE_FILES = [
     "AGENTS.md",
@@ -62,27 +63,30 @@ def _render_file_block(name: str, content: str) -> str:
     return f"\n{name}\n```md\n{body}\n```\n"
 
 
-def _workspace_path(agent_name: str) -> str:
-    root = settings.openclaw_workspace_root or "~/.openclaw/workspaces"
+def _workspace_path(agent_name: str, workspace_root: str) -> str:
+    root = workspace_root or "~/.openclaw/workspaces"
     root = root.rstrip("/")
     return f"{root}/{_slugify(agent_name)}"
 
 
-def build_provisioning_message(agent: Agent, auth_token: str) -> str:
+def build_provisioning_message(agent: Agent, board: Board, auth_token: str) -> str:
     agent_id = str(agent.id)
-    workspace_path = _workspace_path(agent.name)
+    workspace_root = board.gateway_workspace_root or "~/.openclaw/workspaces"
+    workspace_path = _workspace_path(agent.name, workspace_root)
     session_key = agent.openclaw_session_id or ""
     base_url = settings.base_url or "REPLACE_WITH_BASE_URL"
+    main_session_key = board.gateway_main_session_key or "agent:main:main"
 
     context = {
         "agent_name": agent.name,
         "agent_id": agent_id,
+        "board_id": str(board.id),
         "session_key": session_key,
         "workspace_path": workspace_path,
         "base_url": base_url,
         "auth_token": auth_token,
-        "main_session_key": settings.openclaw_main_session_key or "agent:main:main",
-        "workspace_root": settings.openclaw_workspace_root or "~/.openclaw/workspaces",
+        "main_session_key": main_session_key,
+        "workspace_root": workspace_root,
         "user_name": "Unset",
         "user_preferred_name": "Unset",
         "user_timezone": "Unset",
@@ -113,10 +117,15 @@ def build_provisioning_message(agent: Agent, auth_token: str) -> str:
     )
 
 
-async def send_provisioning_message(agent: Agent, auth_token: str) -> None:
-    main_session = settings.openclaw_main_session_key
-    if not main_session:
+async def send_provisioning_message(
+    agent: Agent,
+    board: Board,
+    auth_token: str,
+) -> None:
+    main_session = board.gateway_main_session_key or "agent:main:main"
+    if not board.gateway_url:
         return
-    await ensure_session(main_session, label="Main Agent")
-    message = build_provisioning_message(agent, auth_token)
-    await send_message(message, session_key=main_session, deliver=False)
+    config = GatewayConfig(url=board.gateway_url, token=board.gateway_token)
+    await ensure_session(main_session, config=config, label="Main Agent")
+    message = build_provisioning_message(agent, board, auth_token)
+    await send_message(message, session_key=main_session, config=config, deliver=False)

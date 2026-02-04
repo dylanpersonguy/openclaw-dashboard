@@ -6,6 +6,7 @@ If this file is empty, skip heartbeat work.
 - BASE_URL (e.g. http://localhost:8000)
 - AUTH_TOKEN (agent token)
 - AGENT_NAME
+- BOARD_ID
 
 ## Schedule
 - Run this heartbeat every 10 minutes.
@@ -17,7 +18,7 @@ If this file is empty, skip heartbeat work.
 curl -s -X POST "$BASE_URL/api/v1/agents/heartbeat" \
   -H "X-Agent-Token: $AUTH_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name": "'$AGENT_NAME'", "status": "online"}'
+  -d '{"name": "'$AGENT_NAME'", "board_id": "'$BOARD_ID'", "status": "online"}'
 ```
 
 2) List boards:

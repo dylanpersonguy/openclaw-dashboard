@@ -31,6 +31,10 @@ type Board = {
   id: string;
   name: string;
   slug: string;
+  gateway_url?: string | null;
+  gateway_token?: string | null;
+  gateway_main_session_key?: string | null;
+  gateway_workspace_root?: string | null;
 };
 
 type Task = {
@@ -70,6 +74,13 @@ export default function BoardDetailPage() {
   const [priority, setPriority] = useState("medium");
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [gatewayUrl, setGatewayUrl] = useState("");
+  const [gatewayToken, setGatewayToken] = useState("");
+  const [gatewayMainSessionKey, setGatewayMainSessionKey] = useState("");
+  const [gatewayWorkspaceRoot, setGatewayWorkspaceRoot] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const titleLabel = useMemo(
     () => (board ? `${board.name} board` : "Board"),
@@ -106,6 +117,9 @@ export default function BoardDetailPage() {
       const taskData = (await tasksResponse.json()) as Task[];
       setBoard(boardData);
       setTasks(taskData);
+      setGatewayUrl(boardData.gateway_url ?? "");
+      setGatewayMainSessionKey(boardData.gateway_main_session_key ?? "");
+      setGatewayWorkspaceRoot(boardData.gateway_workspace_root ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -165,6 +179,47 @@ export default function BoardDetailPage() {
     }
   };
 
+  const handleSaveSettings = async () => {
+    if (!isSignedIn || !boardId) return;
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    try {
+      const token = await getToken();
+      const payload: Partial<Board> = {
+        gateway_url: gatewayUrl.trim() || null,
+        gateway_main_session_key: gatewayMainSessionKey.trim() || null,
+        gateway_workspace_root: gatewayWorkspaceRoot.trim() || null,
+      };
+      if (gatewayToken.trim()) {
+        payload.gateway_token = gatewayToken.trim();
+      }
+      const response = await fetch(`${apiBase}/api/v1/boards/${boardId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error("Unable to update board settings.");
+      }
+      const updated = (await response.json()) as Board;
+      setBoard(updated);
+      setGatewayUrl(updated.gateway_url ?? "");
+      setGatewayMainSessionKey(updated.gateway_main_session_key ?? "");
+      setGatewayWorkspaceRoot(updated.gateway_workspace_root ?? "");
+      setGatewayToken("");
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <DashboardShell>
       <SignedOut>
@@ -213,11 +268,88 @@ export default function BoardDetailPage() {
               Loading {titleLabel}…
             </div>
           ) : (
-            <TaskBoard
-              tasks={tasks}
-              onCreateTask={() => setIsDialogOpen(true)}
-              isCreateDisabled={isCreating}
-            />
+            <>
+              <TaskBoard
+                tasks={tasks}
+                onCreateTask={() => setIsDialogOpen(true)}
+                isCreateDisabled={isCreating}
+              />
+              <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+                <div className="mb-4 space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-quiet">
+                    Gateway settings
+                  </p>
+                  <h2 className="text-lg font-semibold text-strong">
+                    Connect this board to an OpenClaw gateway.
+                  </h2>
+                  <p className="text-sm text-muted">
+                    Used when provisioning agents and checking gateway status for
+                    this board.
+                  </p>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-strong">
+                      Gateway URL
+                    </label>
+                    <Input
+                      value={gatewayUrl}
+                      onChange={(event) => setGatewayUrl(event.target.value)}
+                      placeholder="ws://gateway:18789"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-strong">
+                      Gateway token
+                    </label>
+                    <Input
+                      value={gatewayToken}
+                      onChange={(event) => setGatewayToken(event.target.value)}
+                      placeholder="Leave blank to keep current token"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-strong">
+                      Main session key
+                    </label>
+                    <Input
+                      value={gatewayMainSessionKey}
+                      onChange={(event) =>
+                        setGatewayMainSessionKey(event.target.value)
+                      }
+                      placeholder="agent:main:main"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-strong">
+                      Workspace root
+                    </label>
+                    <Input
+                      value={gatewayWorkspaceRoot}
+                      onChange={(event) =>
+                        setGatewayWorkspaceRoot(event.target.value)
+                      }
+                      placeholder="~/.openclaw/workspaces"
+                    />
+                  </div>
+                </div>
+                {saveError ? (
+                  <div className="mt-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] p-3 text-xs text-muted">
+                    {saveError}
+                  </div>
+                ) : null}
+                {saveSuccess ? (
+                  <div className="mt-4 text-xs text-[color:var(--success)]">
+                    Gateway settings saved.
+                  </div>
+                ) : null}
+                <div className="mt-4 flex justify-end">
+                  <Button onClick={handleSaveSettings} disabled={isSaving}>
+                    {isSaving ? "Saving…" : "Save settings"}
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </SignedIn>

@@ -26,6 +26,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const apiBase =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
@@ -39,6 +46,13 @@ type Agent = {
   last_seen_at: string;
   created_at: string;
   updated_at: string;
+  board_id?: string | null;
+};
+
+type Board = {
+  id: string;
+  name: string;
+  slug: string;
 };
 
 type GatewayStatus = {
@@ -84,6 +98,8 @@ export default function AgentsPage() {
   const router = useRouter();
 
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [boardId, setBoardId] = useState("");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "name", desc: false },
   ]);
@@ -97,6 +113,26 @@ export default function AgentsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const sortedAgents = useMemo(() => [...agents], [agents]);
+
+  const loadBoards = async () => {
+    if (!isSignedIn) return;
+    try {
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/api/v1/boards`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" },
+      });
+      if (!response.ok) {
+        throw new Error("Unable to load boards.");
+      }
+      const data = (await response.json()) as Board[];
+      setBoards(data);
+      if (!boardId && data.length > 0) {
+        setBoardId(data[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    }
+  };
 
   const loadAgents = async () => {
     if (!isSignedIn) return;
@@ -122,13 +158,14 @@ export default function AgentsPage() {
   };
 
   const loadGatewayStatus = async () => {
-    if (!isSignedIn) return;
+    if (!isSignedIn || !boardId) return;
     setGatewayError(null);
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/gateway/status`, {
-        headers: { Authorization: token ? `Bearer ${token}` : "" },
-      });
+      const response = await fetch(
+        `${apiBase}/api/v1/gateway/status?board_id=${boardId}`,
+        { headers: { Authorization: token ? `Bearer ${token}` : "" } }
+      );
       if (!response.ok) {
         throw new Error("Unable to load gateway status.");
       }
@@ -140,10 +177,17 @@ export default function AgentsPage() {
   };
 
   useEffect(() => {
+    loadBoards();
     loadAgents();
-    loadGatewayStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
+
+  useEffect(() => {
+    if (boardId) {
+      loadGatewayStatus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, isSignedIn]);
 
   const handleDelete = async () => {
     if (!deleteTarget || !isSignedIn) return;
@@ -169,85 +213,107 @@ export default function AgentsPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    await loadBoards();
+    await loadAgents();
+    await loadGatewayStatus();
+  };
+
   const columns = useMemo<ColumnDef<Agent>[]>(
-    () => [
-      {
-        accessorKey: "name",
-        header: "Agent",
-        cell: ({ row }) => (
-          <div>
-            <p className="font-medium text-strong">{row.original.name}</p>
-            <p className="text-xs text-quiet">ID {row.original.id}</p>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => <StatusPill status={row.original.status} />,
-      },
-      {
-        accessorKey: "openclaw_session_id",
-        header: "Session",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted">
-            {truncate(row.original.openclaw_session_id)}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "last_seen_at",
-        header: "Last seen",
-        cell: ({ row }) => (
-          <div className="text-xs text-muted">
-            <p className="font-medium text-strong">
-              {formatRelative(row.original.last_seen_at)}
-            </p>
-            <p className="text-quiet">{formatTimestamp(row.original.last_seen_at)}</p>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "updated_at",
-        header: "Updated",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted">
-            {formatTimestamp(row.original.updated_at)}
-          </span>
-        ),
-      },
-      {
-        id: "actions",
-        header: "",
-        cell: ({ row }) => (
-          <div
-            className="flex items-center justify-end gap-2"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Link
-              href={`/agents/${row.original.id}`}
-              className="inline-flex h-8 items-center justify-center rounded-lg border border-[color:var(--border)] px-3 text-xs font-medium text-muted transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+    () => {
+      const resolveBoardName = (agent: Agent) =>
+        boards.find((board) => board.id === agent.board_id)?.name ?? "—";
+
+      return [
+        {
+          accessorKey: "name",
+          header: "Agent",
+          cell: ({ row }) => (
+            <div>
+              <p className="font-medium text-strong">{row.original.name}</p>
+              <p className="text-xs text-quiet">ID {row.original.id}</p>
+            </div>
+          ),
+        },
+        {
+          accessorKey: "status",
+          header: "Status",
+          cell: ({ row }) => <StatusPill status={row.original.status} />,
+        },
+        {
+          accessorKey: "openclaw_session_id",
+          header: "Session",
+          cell: ({ row }) => (
+            <span className="text-xs text-muted">
+              {truncate(row.original.openclaw_session_id)}
+            </span>
+          ),
+        },
+        {
+          accessorKey: "board_id",
+          header: "Board",
+          cell: ({ row }) => (
+            <span className="text-xs text-muted">
+              {resolveBoardName(row.original)}
+            </span>
+          ),
+        },
+        {
+          accessorKey: "last_seen_at",
+          header: "Last seen",
+          cell: ({ row }) => (
+            <div className="text-xs text-muted">
+              <p className="font-medium text-strong">
+                {formatRelative(row.original.last_seen_at)}
+              </p>
+              <p className="text-quiet">
+                {formatTimestamp(row.original.last_seen_at)}
+              </p>
+            </div>
+          ),
+        },
+        {
+          accessorKey: "updated_at",
+          header: "Updated",
+          cell: ({ row }) => (
+            <span className="text-xs text-muted">
+              {formatTimestamp(row.original.updated_at)}
+            </span>
+          ),
+        },
+        {
+          id: "actions",
+          header: "",
+          cell: ({ row }) => (
+            <div
+              className="flex items-center justify-end gap-2"
+              onClick={(event) => event.stopPropagation()}
             >
-              View
-            </Link>
-            <Link
-              href={`/agents/${row.original.id}/edit`}
-              className="inline-flex h-8 items-center justify-center rounded-lg border border-[color:var(--border)] px-3 text-xs font-medium text-muted transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
-            >
-              Edit
-            </Link>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteTarget(row.original)}
-            >
-              Delete
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    []
+              <Link
+                href={`/agents/${row.original.id}`}
+                className="inline-flex h-8 items-center justify-center rounded-lg border border-[color:var(--border)] px-3 text-xs font-medium text-muted transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+              >
+                View
+              </Link>
+              <Link
+                href={`/agents/${row.original.id}/edit`}
+                className="inline-flex h-8 items-center justify-center rounded-lg border border-[color:var(--border)] px-3 text-xs font-medium text-muted transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+              >
+                Edit
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteTarget(row.original)}
+              >
+                Delete
+              </Button>
+            </div>
+          ),
+        },
+      ];
+    },
+    [boards]
   );
 
   const table = useReactTable({
@@ -284,7 +350,11 @@ export default function AgentsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={loadAgents} disabled={isLoading}>
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={isLoading}
+              >
                 Refresh
               </Button>
               <Button onClick={() => router.push("/agents/new")}>
@@ -360,6 +430,22 @@ export default function AgentsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                <Select
+                  value={boardId}
+                  onValueChange={(value) => setBoardId(value)}
+                  disabled={boards.length === 0}
+                >
+                  <SelectTrigger className="h-8 w-[200px]">
+                    <SelectValue placeholder="Select board" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {boards.map((board) => (
+                      <SelectItem key={board.id} value={board.id}>
+                        {board.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <StatusPill status={gatewayStatus?.connected ? "online" : "offline"} />
                 <span className="text-xs text-quiet">
                   {gatewayStatus?.sessions_count ?? 0} sessions
