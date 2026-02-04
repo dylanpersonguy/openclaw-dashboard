@@ -9,7 +9,10 @@ type Task = {
   id: string;
   title: string;
   status: string;
+  priority: string;
+  description?: string | null;
   due_at?: string | null;
+  assigned_agent_id?: string | null;
   assignee?: string;
 };
 

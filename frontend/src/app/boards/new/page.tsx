@@ -462,14 +462,35 @@ export default function NewBoardPage() {
                           disabled={isLoading}
                         />
                       </div>
-                      <div className="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={skyllEnabled}
-                          onChange={(event) => setSkyllEnabled(event.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-slate-900"
-                        />
-                        <span>Enable Skyll dynamic skills</span>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            Skyll dynamic skills
+                          </p>
+                          <a
+                            href="https://www.skyll.app"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                          >
+                            skyll.app
+                          </a>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={skyllEnabled}
+                          onClick={() => setSkyllEnabled((prev) => !prev)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                            skyllEnabled ? "bg-blue-600" : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                              skyllEnabled ? "translate-x-5" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
                   </div>

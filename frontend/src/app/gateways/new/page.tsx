@@ -58,6 +58,13 @@ export default function NewGatewayPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const canSubmit =
+    Boolean(name.trim()) &&
+    Boolean(gatewayUrl.trim()) &&
+    Boolean(mainSessionKey.trim()) &&
+    Boolean(workspaceRoot.trim()) &&
+    gatewayCheckStatus === "success";
+
   useEffect(() => {
     setGatewayCheckStatus("idle");
     setGatewayCheckMessage(null);
@@ -206,13 +213,51 @@ export default function NewGatewayPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                    Install Skyll
+                    <a
+                      href="https://www.skyll.app"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                    >
+                      skyll.app
+                    </a>
+                  </label>
+                  <div className="flex h-11 items-center justify-end rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] px-4 shadow-sm">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={skyllEnabled}
+                      onClick={() => setSkyllEnabled((prev) => !prev)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                        skyllEnabled ? "bg-blue-600" : "bg-slate-200"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                          skyllEnabled ? "translate-x-5" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900">
                     Gateway URL <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <Input
                       value={gatewayUrl}
-                      onChange={(event) => setGatewayUrl(event.target.value)}
+                      onChange={(event) => {
+                        setGatewayUrl(event.target.value);
+                        setGatewayUrlError(null);
+                        setGatewayCheckStatus("idle");
+                        setGatewayCheckMessage(null);
+                      }}
                       onBlur={runGatewayCheck}
                       placeholder="ws://gateway:18789"
                       disabled={isLoading}
@@ -249,35 +294,40 @@ export default function NewGatewayPage() {
                     </p>
                   ) : null}
                 </div>
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900">
                     Gateway token
                   </label>
                   <Input
                     value={gatewayToken}
-                    onChange={(event) => setGatewayToken(event.target.value)}
+                    onChange={(event) => {
+                      setGatewayToken(event.target.value);
+                      setGatewayCheckStatus("idle");
+                      setGatewayCheckMessage(null);
+                    }}
                     onBlur={runGatewayCheck}
                     placeholder="Bearer token"
-                    disabled={isLoading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900">
-                    Main session key <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    value={mainSessionKey}
-                    onChange={(event) => setMainSessionKey(event.target.value)}
-                    placeholder={DEFAULT_MAIN_SESSION_KEY}
                     disabled={isLoading}
                   />
                 </div>
               </div>
 
               <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-900">
+                    Main session key <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={mainSessionKey}
+                    onChange={(event) => {
+                      setMainSessionKey(event.target.value);
+                      setGatewayCheckStatus("idle");
+                      setGatewayCheckMessage(null);
+                    }}
+                    placeholder={DEFAULT_MAIN_SESSION_KEY}
+                    disabled={isLoading}
+                  />
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900">
                     Workspace root <span className="text-red-500">*</span>
@@ -289,16 +339,8 @@ export default function NewGatewayPage() {
                     disabled={isLoading}
                   />
                 </div>
-                <div className="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={skyllEnabled}
-                    onChange={(event) => setSkyllEnabled(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-slate-900"
-                  />
-                  <span>Enable Skyll dynamic skills</span>
-                </div>
               </div>
+
 
               {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
@@ -311,7 +353,7 @@ export default function NewGatewayPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading || !canSubmit}>
                   {isLoading ? "Creating…" : "Create gateway"}
                 </Button>
               </div>

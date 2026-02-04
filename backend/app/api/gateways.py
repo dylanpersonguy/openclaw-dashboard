@@ -223,6 +223,13 @@ Start a new session (or restart gateway), then run:
 openclaw skills list --eligible | grep -i skyll
 """.strip()
 
+SKYLL_DISABLE_MESSAGE = """
+To uninstall Skyll, remove the broker skill folder from the shared skills directory.
+
+Exact steps (copy/paste)
+rm -rf ~/.openclaw/skills/skyll
+""".strip()
+
 
 async def _send_skyll_enable_message(gateway: Gateway) -> None:
     if not gateway.url:
@@ -235,6 +242,23 @@ async def _send_skyll_enable_message(gateway: Gateway) -> None:
     )
     await send_message(
         SKYLL_ENABLE_MESSAGE,
+        session_key=gateway.main_session_key,
+        config=client_config,
+        deliver=False,
+    )
+
+
+async def _send_skyll_disable_message(gateway: Gateway) -> None:
+    if not gateway.url:
+        raise OpenClawGatewayError("Gateway url is required")
+    if not gateway.main_session_key:
+        raise OpenClawGatewayError("gateway main_session_key is required")
+    client_config = GatewayClientConfig(url=gateway.url, token=gateway.token)
+    await ensure_session(
+        gateway.main_session_key, config=client_config, label="Main Agent"
+    )
+    await send_message(
+        SKYLL_DISABLE_MESSAGE,
         session_key=gateway.main_session_key,
         config=client_config,
         deliver=False,
@@ -304,6 +328,11 @@ async def update_gateway(
     if not previous_skyll_enabled and gateway.skyll_enabled:
         try:
             await _send_skyll_enable_message(gateway)
+        except OpenClawGatewayError:
+            pass
+    if previous_skyll_enabled and not gateway.skyll_enabled:
+        try:
+            await _send_skyll_disable_message(gateway)
         except OpenClawGatewayError:
             pass
     return gateway

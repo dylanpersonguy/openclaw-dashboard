@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import {
   type ColumnDef,
   type SortingState,
@@ -12,10 +12,11 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -24,9 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getApiBaseUrl } from "@/lib/api-base";
-
-const apiBase = getApiBaseUrl();
+import { apiRequest, useAuthedMutation, useAuthedQuery } from "@/lib/api-query";
 
 type Gateway = {
   id: string;
@@ -59,70 +58,59 @@ const formatTimestamp = (value?: string | null) => {
 };
 
 export default function GatewaysPage() {
-  const { getToken, isSignedIn } = useAuth();
-
-  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const queryClient = useQueryClient();
   const [sorting, setSorting] = useState<SortingState>([
     { id: "name", desc: false },
   ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [deleteTarget, setDeleteTarget] = useState<Gateway | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const gatewaysQuery = useAuthedQuery<Gateway[]>(
+    ["gateways"],
+    "/api/v1/gateways",
+    {
+      refetchInterval: 30_000,
+      refetchOnMount: "always",
+    }
+  );
 
+  const gateways = gatewaysQuery.data ?? [];
   const sortedGateways = useMemo(() => [...gateways], [gateways]);
 
-  const loadGateways = async () => {
-    if (!isSignedIn) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/gateways`, {
-        headers: { Authorization: token ? `Bearer ${token}` : "" },
-      });
-      if (!response.ok) {
-        throw new Error("Unable to load gateways.");
-      }
-      const data = (await response.json()) as Gateway[];
-      setGateways(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadGateways();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget || !isSignedIn) return;
-    setIsDeleting(true);
-    setDeleteError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(
-        `${apiBase}/api/v1/gateways/${deleteTarget.id}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: token ? `Bearer ${token}` : "" },
+  const deleteMutation = useAuthedMutation<
+    void,
+    Gateway,
+    { previous?: Gateway[] }
+  >(
+    async (gateway, token) =>
+      apiRequest(`/api/v1/gateways/${gateway.id}`, {
+        method: "DELETE",
+        token,
+      }),
+    {
+      onMutate: async (gateway) => {
+        await queryClient.cancelQueries({ queryKey: ["gateways"] });
+        const previous = queryClient.getQueryData<Gateway[]>(["gateways"]);
+        queryClient.setQueryData<Gateway[]>(["gateways"], (old = []) =>
+          old.filter((item) => item.id !== gateway.id)
+        );
+        return { previous };
+      },
+      onError: (_error, _gateway, context) => {
+        if (context?.previous) {
+          queryClient.setQueryData(["gateways"], context.previous);
         }
-      );
-      if (!response.ok) {
-        throw new Error("Unable to delete gateway.");
-      }
-      setGateways((prev) => prev.filter((item) => item.id !== deleteTarget.id));
-      setDeleteTarget(null);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsDeleting(false);
+      },
+      onSuccess: () => {
+        setDeleteTarget(null);
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ["gateways"] });
+      },
     }
+  );
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget);
   };
 
   const columns = useMemo<ColumnDef<Gateway>[]>(
@@ -181,18 +169,21 @@ export default function GatewaysPage() {
         id: "actions",
         header: "",
         cell: ({ row }) => (
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" asChild size="sm">
-              <Link href={`/gateways/${row.original.id}/edit`}>Edit</Link>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDeleteTarget(row.original)}
-            >
-              Delete
-            </Button>
-          </div>
+            <div className="flex justify-end gap-2">
+              <Link
+                href={`/gateways/${row.original.id}/edit`}
+                className={buttonVariants({ variant: "ghost", size: "sm" })}
+              >
+                Edit
+              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteTarget(row.original)}
+              >
+                Delete
+              </Button>
+            </div>
         ),
       },
     ],
@@ -223,43 +214,38 @@ export default function GatewaysPage() {
       <SignedIn>
         <DashboardSidebar />
         <main className="flex-1 overflow-y-auto bg-slate-50">
-          <div className="border-b border-slate-200 bg-white px-8 py-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="font-heading text-2xl font-semibold text-slate-900 tracking-tight">
-                  Gateways
-                </h1>
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage OpenClaw gateway connections used by boards.
-                </p>
-              </div>
-              <Button asChild>
-                <Link href="/gateways/new">Create gateway</Link>
-              </Button>
+          <div className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+            <div className="px-8 py-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                    Gateways
+                  </h1>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Manage OpenClaw gateway connections used by boards
+                  </p>
+                </div>
+              {gateways.length > 0 ? (
+                <Link
+                  href="/gateways/new"
+                  className={buttonVariants({ size: "md", variant: "primary" })}
+                >
+                  Create gateway
+                </Link>
+              ) : null}
             </div>
+          </div>
           </div>
 
           <div className="p-8">
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900">All gateways</p>
-                  {isLoading ? (
-                    <span className="text-xs text-slate-500">Loading…</span>
-                  ) : (
-                    <span className="text-xs text-slate-500">
-                      {gateways.length} total
-                    </span>
-                  )}
-                </div>
-              </div>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                     {table.getHeaderGroups().map((headerGroup) => (
                       <tr key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (
-                          <th key={header.id} className="px-6 py-3 font-medium">
+                          <th key={header.id} className="px-6 py-3">
                             {header.isPlaceholder
                               ? null
                               : flexRender(
@@ -272,29 +258,78 @@ export default function GatewaysPage() {
                     ))}
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {table.getRowModel().rows.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50">
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="px-6 py-4">
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </td>
-                        ))}
+                    {gatewaysQuery.isLoading ? (
+                      <tr>
+                        <td colSpan={columns.length} className="px-6 py-8">
+                          <span className="text-sm text-slate-500">Loading…</span>
+                        </td>
                       </tr>
-                    ))}
+                    ) : table.getRowModel().rows.length ? (
+                      table.getRowModel().rows.map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50">
+                          {row.getVisibleCells().map((cell) => (
+                            <td key={cell.id} className="px-6 py-4">
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={columns.length} className="px-6 py-16">
+                          <div className="flex flex-col items-center justify-center text-center">
+                            <div className="mb-4 rounded-full bg-slate-50 p-4">
+                              <svg
+                                className="h-16 w-16 text-slate-300"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <rect
+                                  x="2"
+                                  y="7"
+                                  width="20"
+                                  height="14"
+                                  rx="2"
+                                  ry="2"
+                                />
+                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                              </svg>
+                            </div>
+                            <h3 className="mb-2 text-lg font-semibold text-slate-900">
+                              No gateways yet
+                            </h3>
+                            <p className="mb-6 max-w-md text-sm text-slate-500">
+                              Create your first gateway to connect boards and
+                              start managing your OpenClaw connections.
+                            </p>
+                            <Link
+                              href="/gateways/new"
+                              className={buttonVariants({ size: "md", variant: "primary" })}
+                            >
+                              Create your first gateway
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
-              {!isLoading && gateways.length === 0 ? (
-                <div className="px-6 py-10 text-center text-sm text-slate-500">
-                  No gateways yet. Create your first gateway to connect boards.
-                </div>
-              ) : null}
             </div>
 
-            {error ? <p className="mt-4 text-sm text-red-500">{error}</p> : null}
+            {gatewaysQuery.error ? (
+              <p className="mt-4 text-sm text-red-500">
+                {gatewaysQuery.error.message}
+              </p>
+            ) : null}
+
           </div>
         </main>
       </SignedIn>
@@ -308,15 +343,17 @@ export default function GatewaysPage() {
               using it will need a new gateway assigned.
             </DialogDescription>
           </DialogHeader>
-          {deleteError ? (
-            <p className="text-sm text-red-500">{deleteError}</p>
+          {deleteMutation.error ? (
+            <p className="text-sm text-red-500">
+              {deleteMutation.error.message}
+            </p>
           ) : null}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? "Deleting…" : "Delete"}
+            <Button onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

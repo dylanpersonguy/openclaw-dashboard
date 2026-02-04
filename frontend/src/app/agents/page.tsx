@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import {
   type ColumnDef,
   type SortingState,
@@ -13,6 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
@@ -33,9 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getApiBaseUrl } from "@/lib/api-base";
-
-const apiBase = getApiBaseUrl();
+import { apiRequest, useAuthedMutation, useAuthedQuery } from "@/lib/api-query";
 
 type Agent = {
   id: string;
@@ -102,129 +101,91 @@ const truncate = (value?: string | null, max = 18) => {
 };
 
 export default function AgentsPage() {
-  const { getToken, isSignedIn } = useAuth();
+  const queryClient = useQueryClient();
   const router = useRouter();
 
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [boards, setBoards] = useState<Board[]>([]);
   const [boardId, setBoardId] = useState("");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "name", desc: false },
   ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
-  const [gatewayError, setGatewayError] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const boardsQuery = useAuthedQuery<Board[]>(["boards"], "/api/v1/boards", {
+    refetchInterval: 30_000,
+    refetchOnMount: "always",
+  });
+  const agentsQuery = useAuthedQuery<Agent[]>(["agents"], "/api/v1/agents", {
+    refetchInterval: 15_000,
+    refetchOnMount: "always",
+  });
+
+  const boards = boardsQuery.data ?? [];
+  const agents = agentsQuery.data ?? [];
+
+  useEffect(() => {
+    if (!boardId && boards.length > 0) {
+      setBoardId(boards[0].id);
+    }
+  }, [boardId, boards]);
+
+  const statusPath = boardId
+    ? `/api/v1/gateways/status?board_id=${boardId}`
+    : null;
+
+  const gatewayStatusQuery = useAuthedQuery<GatewayStatus>(
+    ["gateway-status", boardId || "all"],
+    statusPath,
+    {
+      enabled: Boolean(statusPath),
+      refetchInterval: 15_000,
+    }
+  );
+
+  const gatewayStatus = gatewayStatusQuery.data ?? null;
+
+  const deleteMutation = useAuthedMutation<void, Agent, { previous?: Agent[] }>(
+    async (agent, token) =>
+      apiRequest(`/api/v1/agents/${agent.id}`, {
+        method: "DELETE",
+        token,
+      }),
+    {
+      onMutate: async (agent) => {
+        await queryClient.cancelQueries({ queryKey: ["agents"] });
+        const previous = queryClient.getQueryData<Agent[]>(["agents"]);
+        queryClient.setQueryData<Agent[]>(["agents"], (old = []) =>
+          old.filter((item) => item.id !== agent.id)
+        );
+        return { previous };
+      },
+      onError: (_error, _agent, context) => {
+        if (context?.previous) {
+          queryClient.setQueryData(["agents"], context.previous);
+        }
+      },
+      onSuccess: () => {
+        setDeleteTarget(null);
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ["agents"] });
+      },
+    }
+  );
 
   const sortedAgents = useMemo(() => [...agents], [agents]);
 
-  const loadBoards = async () => {
-    if (!isSignedIn) return;
-    try {
-      const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/boards`, {
-        headers: { Authorization: token ? `Bearer ${token}` : "" },
-      });
-      if (!response.ok) {
-        throw new Error("Unable to load boards.");
-      }
-      const data = (await response.json()) as Board[];
-      setBoards(data);
-      if (!boardId && data.length > 0) {
-        setBoardId(data[0].id);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    }
-  };
-
-  const loadAgents = async () => {
-    if (!isSignedIn) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/agents`, {
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      if (!response.ok) {
-        throw new Error("Unable to load agents.");
-      }
-      const data = (await response.json()) as Agent[];
-      setAgents(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadGatewayStatus = async () => {
-    if (!isSignedIn || !boardId) return;
-    setGatewayError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(
-        `${apiBase}/api/v1/gateways/status?board_id=${boardId}`,
-        { headers: { Authorization: token ? `Bearer ${token}` : "" } }
-      );
-      if (!response.ok) {
-        throw new Error("Unable to load gateway status.");
-      }
-      const statusData = (await response.json()) as GatewayStatus;
-      setGatewayStatus(statusData);
-    } catch (err) {
-      setGatewayError(err instanceof Error ? err.message : "Something went wrong.");
-    }
-  };
-
-  useEffect(() => {
-    loadBoards();
-    loadAgents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
-
-  useEffect(() => {
-    if (boardId) {
-      loadGatewayStatus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, isSignedIn]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget || !isSignedIn) return;
-    setIsDeleting(true);
-    setDeleteError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/agents/${deleteTarget.id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      if (!response.ok) {
-        throw new Error("Unable to delete agent.");
-      }
-      await loadAgents();
-      setDeleteTarget(null);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsDeleting(false);
-    }
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget);
   };
 
   const handleRefresh = async () => {
-    await loadBoards();
-    await loadAgents();
-    await loadGatewayStatus();
+    await Promise.all([
+      boardsQuery.refetch(),
+      agentsQuery.refetch(),
+      gatewayStatusQuery.refetch(),
+    ]);
   };
 
   const columns = useMemo<ColumnDef<Agent>[]>(
@@ -362,31 +323,36 @@ export default function AgentsPage() {
                   {agents.length} agent{agents.length === 1 ? "" : "s"} total.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleRefresh}
-                  disabled={isLoading}
-                >
-                  Refresh
-                </Button>
-                <Button onClick={() => router.push("/agents/new")}>
-                  New agent
-                </Button>
-              </div>
+              {agents.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleRefresh}
+                    disabled={agentsQuery.isLoading}
+                  >
+                    Refresh
+                  </Button>
+                  <Button onClick={() => router.push("/agents/new")}>
+                    New agent
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
 
           <div className="p-8">
-            {error ? (
+            {agentsQuery.error ? (
               <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm">
-                {error}
+                {agentsQuery.error.message}
               </div>
             ) : null}
 
-            {agents.length === 0 && !isLoading ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white/70 p-10 text-center text-sm text-slate-500">
-                No agents yet. Create your first agent to get started.
+            {agents.length === 0 && !agentsQuery.isLoading ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-slate-200 bg-white/70 p-10 text-center text-sm text-slate-500">
+                <p>No agents yet. Create your first agent to get started.</p>
+                <Button onClick={() => router.push("/agents/new")}>
+                  Create your first agent
+                </Button>
               </div>
             ) : (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -470,8 +436,10 @@ export default function AgentsPage() {
               {gatewayStatus?.error ? (
                 <p className="mt-3 text-xs text-red-600">{gatewayStatus.error}</p>
               ) : null}
-              {gatewayError ? (
-                <p className="mt-3 text-xs text-red-600">{gatewayError}</p>
+              {gatewayStatusQuery.error ? (
+                <p className="mt-3 text-xs text-red-600">
+                  {gatewayStatusQuery.error.message}
+                </p>
               ) : null}
             </div>
           </div>
@@ -483,7 +451,6 @@ export default function AgentsPage() {
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setDeleteTarget(null);
-            setDeleteError(null);
           }
         }}
       >
@@ -494,17 +461,17 @@ export default function AgentsPage() {
               This will remove {deleteTarget?.name}. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          {deleteError ? (
+          {deleteMutation.error ? (
             <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] p-3 text-xs text-muted">
-              {deleteError}
+              {deleteMutation.error.message}
             </div>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? "Deleting…" : "Delete"}
+            <Button onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

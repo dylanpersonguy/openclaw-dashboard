@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import {
   Area,
   AreaChart,
@@ -22,7 +22,7 @@ import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { Button } from "@/components/ui/button";
 import MetricSparkline from "@/components/charts/metric-sparkline";
-import { getApiBaseUrl } from "@/lib/api-base";
+import { useAuthedQuery } from "@/lib/api-query";
 
 type RangeKey = "24h" | "7d";
 type BucketKey = "hour" | "day";
@@ -75,8 +75,6 @@ type DashboardMetrics = {
   error_rate: SeriesSet;
   wip: WipSeriesSet;
 };
-
-const apiBase = getApiBaseUrl();
 
 const hourFormatter = new Intl.DateTimeFormat("en-US", { hour: "numeric" });
 const dayFormatter = new Intl.DateTimeFormat("en-US", {
@@ -251,41 +249,16 @@ function ChartCard({
 }
 
 export default function DashboardPage() {
-  const { getToken, isSignedIn } = useAuth();
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const metricsQuery = useAuthedQuery<DashboardMetrics>(
+    ["metrics", "dashboard", "24h"],
+    "/api/v1/metrics/dashboard?range=24h",
+    {
+      refetchInterval: 15_000,
+      refetchOnMount: "always",
+    },
+  );
 
-  const loadMetrics = async () => {
-    if (!isSignedIn) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(
-        `${apiBase}/api/v1/metrics/dashboard?range=24h`,
-        {
-          headers: {
-            Authorization: token ? `Bearer ${token}` : "",
-          },
-        },
-      );
-      if (!response.ok) {
-        throw new Error("Unable to load dashboard metrics.");
-      }
-      const data = (await response.json()) as DashboardMetrics;
-      setMetrics(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
+  const metrics = metricsQuery.data ?? null;
 
   const throughputSeries = useMemo(
     () => (metrics ? buildSeries(metrics.throughput.primary) : []),
@@ -386,13 +359,13 @@ export default function DashboardPage() {
           </div>
           <div className="p-8">
 
-            {error ? (
+            {metricsQuery.error ? (
               <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
-                {error}
+                {metricsQuery.error.message}
               </div>
             ) : null}
 
-            {isLoading && !metrics ? (
+            {metricsQuery.isLoading && !metrics ? (
               <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
                 Loading dashboard metrics…
               </div>

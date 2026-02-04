@@ -1,21 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { Button } from "@/components/ui/button";
-import { getApiBaseUrl } from "@/lib/api-base";
+import { apiRequest, useAuthedMutation, useAuthedQuery } from "@/lib/api-query";
 import {
   Dialog,
   DialogContent,
@@ -31,73 +32,55 @@ type Board = {
   slug: string;
 };
 
-const apiBase = getApiBaseUrl();
-
 export default function BoardsPage() {
-  const { getToken, isSignedIn } = useAuth();
+  const queryClient = useQueryClient();
   const router = useRouter();
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Board | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const boardsQuery = useAuthedQuery<Board[]>(["boards"], "/api/v1/boards", {
+    refetchInterval: 30_000,
+    refetchOnMount: "always",
+  });
+
+  const boards = boardsQuery.data ?? [];
 
   const sortedBoards = useMemo(
     () => [...boards].sort((a, b) => a.name.localeCompare(b.name)),
     [boards]
   );
 
-  const loadBoards = async () => {
-    if (!isSignedIn) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/boards`, {
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      if (!response.ok) {
-        throw new Error("Unable to load boards.");
-      }
-      const data = (await response.json()) as Board[];
-      setBoards(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBoards();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget || !isSignedIn) return;
-    setIsDeleting(true);
-    setDeleteError(null);
-    try {
-      const token = await getToken();
-      const response = await fetch(`${apiBase}/api/v1/boards/${deleteTarget.id}`, {
+  const deleteMutation = useAuthedMutation<void, Board, { previous?: Board[] }>(
+    async (board, token) =>
+      apiRequest(`/api/v1/boards/${board.id}`, {
         method: "DELETE",
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      if (!response.ok) {
-        throw new Error("Unable to delete board.");
-      }
-      setBoards((prev) => prev.filter((board) => board.id !== deleteTarget.id));
-      setDeleteTarget(null);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsDeleting(false);
+        token,
+      }),
+    {
+      onMutate: async (board) => {
+        await queryClient.cancelQueries({ queryKey: ["boards"] });
+        const previous = queryClient.getQueryData<Board[]>(["boards"]);
+        queryClient.setQueryData<Board[]>(["boards"], (old = []) =>
+          old.filter((item) => item.id !== board.id)
+        );
+        return { previous };
+      },
+      onError: (_error, _board, context) => {
+        if (context?.previous) {
+          queryClient.setQueryData(["boards"], context.previous);
+        }
+      },
+      onSuccess: () => {
+        setDeleteTarget(null);
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ["boards"] });
+      },
     }
+  );
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget);
   };
 
   const columns = useMemo<ColumnDef<Board>[]>(
@@ -181,22 +164,27 @@ export default function BoardsPage() {
                   {sortedBoards.length === 1 ? "" : "s"} total.
                 </p>
               </div>
-              <Button onClick={() => router.push("/boards/new")}>
-                New board
-              </Button>
+              {sortedBoards.length > 0 ? (
+                <Button onClick={() => router.push("/boards/new")}>
+                  New board
+                </Button>
+              ) : null}
             </div>
           </div>
 
           <div className="p-8">
-            {error && (
+            {boardsQuery.error && (
               <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm">
-                {error}
+                {boardsQuery.error.message}
               </div>
             )}
 
-            {sortedBoards.length === 0 && !isLoading ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white/70 p-10 text-center text-sm text-slate-500">
-                No boards yet. Create your first board to get started.
+            {sortedBoards.length === 0 && !boardsQuery.isLoading ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-slate-200 bg-white/70 p-10 text-center text-sm text-slate-500">
+                <p>No boards yet. Create your first board to get started.</p>
+                <Button onClick={() => router.push("/boards/new")}>
+                  Create your first board
+                </Button>
               </div>
             ) : (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -250,7 +238,6 @@ export default function BoardsPage() {
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setDeleteTarget(null);
-            setDeleteError(null);
           }
         }}
       >
@@ -261,17 +248,17 @@ export default function BoardsPage() {
               This will remove {deleteTarget?.name}. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          {deleteError ? (
+          {deleteMutation.error ? (
             <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] p-3 text-xs text-muted">
-              {deleteError}
+              {deleteMutation.error.message}
             </div>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? "Deleting…" : "Delete"}
+            <Button onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

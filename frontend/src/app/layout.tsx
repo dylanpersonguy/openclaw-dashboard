@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { IBM_Plex_Sans, Sora } from "next/font/google";
 
+import { QueryProvider } from "@/components/providers/QueryProvider";
+
 export const metadata: Metadata = {
   title: "OpenClaw Mission Control",
   description: "A calm command center for every task.",
@@ -32,7 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <body
           className={`${bodyFont.variable} ${headingFont.variable} min-h-screen bg-app text-strong antialiased`}
         >
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </body>
       </html>
     </ClerkProvider>

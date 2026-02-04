@@ -1,13 +1,51 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BarChart3, Bot, LayoutGrid, Network } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { getApiBaseUrl } from "@/lib/api-base";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
+  const [systemStatus, setSystemStatus] = useState<
+    "unknown" | "operational" | "degraded"
+  >("unknown");
+  const [statusLabel, setStatusLabel] = useState("System status unavailable");
+
+  useEffect(() => {
+    let isMounted = true;
+    const apiBase = getApiBaseUrl();
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${apiBase}/healthz`, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("Health check failed");
+        }
+        const data = (await response.json()) as { ok?: boolean };
+        if (!isMounted) return;
+        if (data?.ok) {
+          setSystemStatus("operational");
+          setStatusLabel("All systems operational");
+        } else {
+          setSystemStatus("degraded");
+          setStatusLabel("System degraded");
+        }
+      } catch {
+        if (!isMounted) return;
+        setSystemStatus("degraded");
+        setStatusLabel("System degraded");
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-slate-200 bg-white">
@@ -68,8 +106,15 @@ export function DashboardSidebar() {
       </div>
       <div className="border-t border-slate-200 p-4">
         <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="h-2 w-2 rounded-full bg-blue-500" />
-          All systems operational
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              systemStatus === "operational" && "bg-emerald-500",
+              systemStatus === "degraded" && "bg-rose-500",
+              systemStatus === "unknown" && "bg-slate-300"
+            )}
+          />
+          {statusLabel}
         </div>
       </div>
     </aside>
