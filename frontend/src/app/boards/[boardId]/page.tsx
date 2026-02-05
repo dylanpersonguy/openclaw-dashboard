@@ -7,6 +7,8 @@ import { SignInButton, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
 import { X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
+import { BoardGoalPanel } from "@/components/BoardGoalPanel";
+import { BoardOnboardingChat } from "@/components/BoardOnboardingChat";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { TaskBoard } from "@/components/organisms/TaskBoard";
 import { DashboardShell } from "@/components/templates/DashboardShell";
@@ -35,6 +37,11 @@ type Board = {
   id: string;
   name: string;
   slug: string;
+  board_type?: string;
+  objective?: string | null;
+  success_metrics?: Record<string, unknown> | null;
+  target_date?: string | null;
+  goal_confirmed?: boolean;
 };
 
 type Task = {
@@ -92,6 +99,8 @@ export default function BoardDetailPage() {
   const tasksRef = useRef<Task[]>([]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [hasPromptedOnboarding, setHasPromptedOnboarding] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
@@ -266,7 +275,22 @@ export default function BoardDetailPage() {
       isCancelled = true;
       abortController.abort();
     };
-  }, [board, boardId, getToken, isSignedIn]);
+  }, [board, boardId, getToken, isSignedIn, selectedTask?.id]);
+
+  useEffect(() => {
+    if (!board) return;
+    if (board.board_type === "general") {
+      setIsOnboardingOpen(false);
+      return;
+    }
+    if (!board.goal_confirmed && !hasPromptedOnboarding) {
+      setIsOnboardingOpen(true);
+      setHasPromptedOnboarding(true);
+    }
+    if (board.goal_confirmed) {
+      setIsOnboardingOpen(false);
+    }
+  }, [board, hasPromptedOnboarding]);
 
   const resetForm = () => {
     setTitle("");
@@ -402,6 +426,11 @@ export default function BoardDetailPage() {
     setCommentsError(null);
   };
 
+  const handleOnboardingConfirmed = (updated: Board) => {
+    setBoard(updated);
+    setIsOnboardingOpen(false);
+  };
+
   const agentInitials = (name: string) =>
     name
       .split(" ")
@@ -428,7 +457,6 @@ export default function BoardDetailPage() {
       minute: "2-digit",
     });
   };
-
 
   return (
     <DashboardShell>
@@ -546,9 +574,19 @@ export default function BoardDetailPage() {
               </div>
             </aside>
 
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-6">
+              <div className="grid gap-4">
+                <BoardGoalPanel
+                  board={board}
+                  onStartOnboarding={() => setIsOnboardingOpen(true)}
+                  onEdit={
+                    boardId ? () => router.push(`/boards/${boardId}/edit`) : undefined
+                  }
+                />
+              </div>
+
               {error && (
-                <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm">
+                <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm">
                   {error}
                 </div>
               )}
@@ -746,6 +784,29 @@ export default function BoardDetailPage() {
               {isCreating ? "Creating…" : "Create task"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isOnboardingOpen}
+        onOpenChange={(nextOpen) => {
+          setIsOnboardingOpen(nextOpen);
+          if (!nextOpen) {
+            setHasPromptedOnboarding(true);
+          }
+        }}
+      >
+        <DialogContent aria-label="Board onboarding">
+          {boardId ? (
+            <BoardOnboardingChat
+              boardId={boardId}
+              onConfirmed={handleOnboardingConfirmed}
+            />
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              Unable to start onboarding.
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardShell>

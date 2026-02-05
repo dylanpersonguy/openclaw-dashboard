@@ -9,7 +9,15 @@ import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import SearchableSelect from "@/components/ui/searchable-select";
+import { Textarea } from "@/components/ui/textarea";
 import { getApiBaseUrl } from "@/lib/api-base";
 
 const apiBase = getApiBaseUrl();
@@ -19,6 +27,10 @@ type Board = {
   name: string;
   slug: string;
   gateway_id?: string | null;
+  board_type?: string;
+  objective?: string | null;
+  success_metrics?: Record<string, unknown> | null;
+  target_date?: string | null;
 };
 
 type Gateway = {
@@ -36,6 +48,13 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "") || "board";
 
+const toDateInput = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+
 export default function EditBoardPage() {
   const { getToken, isSignedIn } = useAuth();
   const router = useRouter();
@@ -47,9 +66,14 @@ export default function EditBoardPage() {
   const [name, setName] = useState("");
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [gatewayId, setGatewayId] = useState<string>("");
+  const [boardType, setBoardType] = useState("goal");
+  const [objective, setObjective] = useState("");
+  const [successMetrics, setSuccessMetrics] = useState("");
+  const [targetDate, setTargetDate] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   const isFormReady = Boolean(name.trim() && gatewayId);
 
@@ -88,6 +112,12 @@ export default function EditBoardPage() {
       if (data.gateway_id) {
         setGatewayId(data.gateway_id);
       }
+      setBoardType(data.board_type ?? "goal");
+      setObjective(data.objective ?? "");
+      setSuccessMetrics(
+        data.success_metrics ? JSON.stringify(data.success_metrics, null, 2) : ""
+      );
+      setTargetDate(toDateInput(data.target_date));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     }
@@ -126,8 +156,19 @@ export default function EditBoardPage() {
 
     setIsLoading(true);
     setError(null);
+    setMetricsError(null);
     try {
       const token = await getToken();
+      let parsedMetrics: Record<string, unknown> | null = null;
+      if (successMetrics.trim()) {
+        try {
+          parsedMetrics = JSON.parse(successMetrics) as Record<string, unknown>;
+        } catch {
+          setMetricsError("Success metrics must be valid JSON.");
+          setIsLoading(false);
+          return;
+        }
+      }
 
       const response = await fetch(`${apiBase}/api/v1/boards/${boardId}`, {
         method: "PATCH",
@@ -139,6 +180,10 @@ export default function EditBoardPage() {
           name: name.trim(),
           slug: slugify(name.trim()),
           gateway_id: gatewayId || null,
+          board_type: boardType,
+          objective: objective.trim() || null,
+          success_metrics: parsedMetrics,
+          target_date: targetDate ? new Date(targetDate).toISOString() : null,
         }),
       });
       if (!response.ok) {
@@ -217,6 +262,66 @@ export default function EditBoardPage() {
                     itemClassName="px-4 py-3 text-sm text-slate-700 data-[selected=true]:bg-slate-50 data-[selected=true]:text-slate-900"
                   />
                 </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-900">
+                    Board type
+                  </label>
+                  <Select value={boardType} onValueChange={setBoardType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select board type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="goal">Goal</SelectItem>
+                      <SelectItem value="general">General</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-900">
+                    Target date
+                  </label>
+                  <Input
+                    type="date"
+                    value={targetDate}
+                    onChange={(event) => setTargetDate(event.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-900">
+                  Objective
+                </label>
+                <Textarea
+                  value={objective}
+                  onChange={(event) => setObjective(event.target.value)}
+                  placeholder="What should this board achieve?"
+                  className="min-h-[120px]"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-900">
+                  Success metrics (JSON)
+                </label>
+                <Textarea
+                  value={successMetrics}
+                  onChange={(event) => setSuccessMetrics(event.target.value)}
+                  placeholder='e.g. { "target": "Launch by week 2" }'
+                  className="min-h-[140px] font-mono text-xs"
+                  disabled={isLoading}
+                />
+                <p className="text-xs text-slate-500">
+                  Add key outcomes so the lead agent can measure progress.
+                </p>
+                {metricsError ? (
+                  <p className="text-xs text-red-500">{metricsError}</p>
+                ) : null}
               </div>
 
               {gateways.length === 0 ? (
