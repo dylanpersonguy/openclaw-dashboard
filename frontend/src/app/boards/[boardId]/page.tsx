@@ -235,7 +235,7 @@ export default function BoardDetailPage() {
     return latestTime ? new Date(latestTime).toISOString() : null;
   };
 
-  const loadBoard = async () => {
+  const loadBoard = useCallback(async () => {
     if (!isSignedIn || !boardId) return;
     setIsLoading(true);
     setIsApprovalsLoading(true);
@@ -264,12 +264,11 @@ export default function BoardDetailPage() {
       setIsLoading(false);
       setIsApprovalsLoading(false);
     }
-  };
+  }, [boardId, isSignedIn]);
 
   useEffect(() => {
-    loadBoard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, boardId, isSignedIn]);
+    void loadBoard();
+  }, [loadBoard]);
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -910,7 +909,7 @@ export default function BoardDetailPage() {
     });
   }, [agents, workingAgentIds]);
 
-  const loadComments = async (taskId: string) => {
+  const loadComments = useCallback(async (taskId: string) => {
     if (!isSignedIn || !boardId) return;
     setIsCommentsLoading(true);
     setCommentsError(null);
@@ -927,9 +926,9 @@ export default function BoardDetailPage() {
     } finally {
       setIsCommentsLoading(false);
     }
-  };
+  }, [boardId, isSignedIn]);
 
-  const openComments = (task: { id: string }) => {
+  const openComments = useCallback((task: { id: string }) => {
     setIsChatOpen(false);
     setIsLiveFeedOpen(false);
     const fullTask = tasksRef.current.find((item) => item.id === task.id);
@@ -937,7 +936,7 @@ export default function BoardDetailPage() {
     setSelectedTask(fullTask);
     setIsDetailOpen(true);
     void loadComments(task.id);
-  };
+  }, [loadComments]);
 
   const closeComments = () => {
     setIsDetailOpen(false);
@@ -1085,7 +1084,7 @@ export default function BoardDetailPage() {
     }
   };
 
-  const handleTaskMove = async (taskId: string, status: TaskStatus) => {
+  const handleTaskMove = useCallback(async (taskId: string, status: TaskStatus) => {
     if (!isSignedIn || !boardId) return;
     const currentTask = tasksRef.current.find((task) => task.id === taskId);
     if (!currentTask || currentTask.status === status) return;
@@ -1110,12 +1109,14 @@ export default function BoardDetailPage() {
         { status },
       );
       if (result.status !== 200) throw new Error("Unable to move task.");
+      const assignee = result.data.assigned_agent_id
+        ? agentsRef.current.find((agent) => agent.id === result.data.assigned_agent_id)
+            ?.name ?? null
+        : null;
       const updated = normalizeTask({
         ...currentTask,
         ...result.data,
-        assignee: result.data.assigned_agent_id
-          ? assigneeById.get(result.data.assigned_agent_id) ?? null
-          : null,
+        assignee,
         approvals_count: currentTask.approvals_count,
         approvals_pending_count: currentTask.approvals_pending_count,
       } as TaskCardRead);
@@ -1126,7 +1127,7 @@ export default function BoardDetailPage() {
       setTasks(previousTasks);
       setError(err instanceof Error ? err.message : "Unable to move task.");
     }
-  };
+  }, [boardId, isSignedIn]);
 
   const agentInitials = (agent: Agent) =>
     agent.name

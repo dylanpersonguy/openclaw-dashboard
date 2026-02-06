@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import { TaskCard } from "@/components/molecules/TaskCard";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ const formatDueDate = (value?: string | null) => {
   });
 };
 
-export function TaskBoard({
+export const TaskBoard = memo(function TaskBoard({
   tasks,
   onTaskSelect,
   onTaskMove,
@@ -204,4 +204,6 @@ export function TaskBoard({
       })}
     </div>
   );
-}
+});
+
+TaskBoard.displayName = "TaskBoard";
