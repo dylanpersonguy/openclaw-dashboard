@@ -160,6 +160,8 @@ make check
 
 ## Troubleshooting
 
+More: [`docs/troubleshooting/README.md`](./docs/troubleshooting/README.md)
+
 ### Frontend keeps redirecting / Clerk errors
 
 You likely have `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` set (even to a placeholder). To run without Clerk:
