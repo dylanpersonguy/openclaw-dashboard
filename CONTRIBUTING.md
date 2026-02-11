@@ -61,3 +61,7 @@ If that’s not available in your environment, contact the maintainers privately
 ## Code of conduct
 
 If this repository adopts a Code of Conduct, we will link it here.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License. See [`LICENSE`](./LICENSE).
