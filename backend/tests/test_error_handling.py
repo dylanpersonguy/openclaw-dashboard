@@ -14,6 +14,7 @@ from app.core.error_handling import (
     _error_payload,
     _get_request_id,
     _http_exception_exception_handler,
+    _json_safe,
     _request_validation_exception_handler,
     _response_validation_exception_handler,
     install_error_handling,
@@ -207,6 +208,20 @@ def test_get_request_id_returns_none_for_missing_or_invalid_state() -> None:
 
 def test_error_payload_omits_request_id_when_none() -> None:
     assert _error_payload(detail="x", request_id=None) == {"detail": "x"}
+
+
+def test_json_safe_handles_binary_inputs() -> None:
+    assert _json_safe(b"\xf0\x9f\x92\xa1") == "💡"
+    assert _json_safe(bytearray(b"hello")) == "hello"
+    assert _json_safe(memoryview(b"world")) == "world"
+
+
+def test_json_safe_falls_back_to_string_for_unknown_objects() -> None:
+    class Weird:
+        def __str__(self) -> str:
+            return "weird-value"
+
+    assert _json_safe(Weird()) == "weird-value"
 
 
 @pytest.mark.asyncio

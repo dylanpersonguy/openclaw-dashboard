@@ -92,7 +92,12 @@ import type {
   TaskRead,
 } from "@/api/generated/model";
 import { createExponentialBackoff } from "@/lib/backoff";
-import { apiDatetimeToMs, parseApiDatetime } from "@/lib/datetime";
+import {
+  apiDatetimeToMs,
+  localDateInputToUtcIso,
+  parseApiDatetime,
+  toLocalDateInput,
+} from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import { usePageActive } from "@/hooks/usePageActive";
 
@@ -738,8 +743,6 @@ export default function BoardDetailPage() {
   const liveFeedHistoryLoadedRef = useRef(false);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState<string | null>(null);
-  const [newComment, setNewComment] = useState("");
-  const taskCommentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [postCommentError, setPostCommentError] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -1001,6 +1004,7 @@ export default function BoardDetailPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
+  const [createDueDate, setCreateDueDate] = useState("");
   const [createTagIds, setCreateTagIds] = useState<string[]>([]);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -1009,6 +1013,7 @@ export default function BoardDetailPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editStatus, setEditStatus] = useState<TaskStatus>("inbox");
   const [editPriority, setEditPriority] = useState("medium");
+  const [editDueDate, setEditDueDate] = useState("");
   const [editAssigneeId, setEditAssigneeId] = useState("");
   const [editTagIds, setEditTagIds] = useState<string[]>([]);
   const [editDependsOnTaskIds, setEditDependsOnTaskIds] = useState<string[]>(
@@ -1484,6 +1489,7 @@ export default function BoardDetailPage() {
       setEditDescription("");
       setEditStatus("inbox");
       setEditPriority("medium");
+      setEditDueDate("");
       setEditAssigneeId("");
       setEditTagIds([]);
       setEditDependsOnTaskIds([]);
@@ -1494,6 +1500,7 @@ export default function BoardDetailPage() {
     setEditDescription(selectedTask.description ?? "");
     setEditStatus(selectedTask.status);
     setEditPriority(selectedTask.priority);
+    setEditDueDate(toLocalDateInput(selectedTask.due_at));
     setEditAssigneeId(selectedTask.assigned_agent_id ?? "");
     setEditTagIds(selectedTask.tag_ids ?? []);
     setEditDependsOnTaskIds(selectedTask.depends_on_task_ids ?? []);
@@ -1802,6 +1809,7 @@ export default function BoardDetailPage() {
     setTitle("");
     setDescription("");
     setPriority("medium");
+    setCreateDueDate("");
     setCreateTagIds([]);
     setCreateError(null);
   };
@@ -1821,6 +1829,7 @@ export default function BoardDetailPage() {
         description: description.trim() || null,
         status: "inbox",
         priority,
+        due_at: localDateInputToUtcIso(createDueDate),
         tag_ids: createTagIds,
       });
       if (result.status !== 200) throw new Error("Unable to create task.");
@@ -1973,6 +1982,15 @@ export default function BoardDetailPage() {
     () => agents.filter((agent) => !agent.is_board_lead),
     [agents],
   );
+  const boardChatMentionSuggestions = useMemo(() => {
+    const options = new Set<string>(["lead"]);
+    agents.forEach((agent) => {
+      if (agent.name) {
+        options.add(agent.name);
+      }
+    });
+    return [...options];
+  }, [agents]);
 
   const tagById = useMemo(() => {
     const map = new Map<string, TagRead>();
@@ -2045,6 +2063,7 @@ export default function BoardDetailPage() {
     const normalizedTitle = editTitle.trim();
     const normalizedDescription = editDescription.trim();
     const currentDescription = (selectedTask.description ?? "").trim();
+    const currentDueDate = toLocalDateInput(selectedTask.due_at);
     const currentAssignee = selectedTask.assigned_agent_id ?? "";
     const currentTags = [...(selectedTask.tag_ids ?? [])].sort().join("|");
     const nextTags = [...editTagIds].sort().join("|");
@@ -2057,12 +2076,14 @@ export default function BoardDetailPage() {
       normalizedDescription !== currentDescription ||
       editStatus !== selectedTask.status ||
       editPriority !== selectedTask.priority ||
+      editDueDate !== currentDueDate ||
       editAssigneeId !== currentAssignee ||
       currentTags !== nextTags ||
       currentDeps !== nextDeps
     );
   }, [
     editAssigneeId,
+    editDueDate,
     editTagIds,
     editDependsOnTaskIds,
     editDescription,
@@ -2205,7 +2226,6 @@ export default function BoardDetailPage() {
     setSelectedTask(null);
     setComments([]);
     setCommentsError(null);
-    setNewComment("");
     setPostCommentError(null);
     setIsEditDialogOpen(false);
   };
@@ -2237,12 +2257,12 @@ export default function BoardDetailPage() {
     setIsLiveFeedOpen(false);
   };
 
-  const handlePostComment = async () => {
-    if (!selectedTask || !boardId || !isSignedIn) return;
-    const trimmed = newComment.trim();
+  const handlePostComment = async (message: string): Promise<boolean> => {
+    if (!selectedTask || !boardId || !isSignedIn) return false;
+    const trimmed = message.trim();
     if (!trimmed) {
       setPostCommentError("Write a message before sending.");
-      return;
+      return false;
     }
     setIsPostingComment(true);
     setPostCommentError(null);
@@ -2256,14 +2276,14 @@ export default function BoardDetailPage() {
       if (result.status !== 200) throw new Error("Unable to send message.");
       const created = result.data;
       setComments((prev) => [created, ...prev]);
-      setNewComment("");
+      return true;
     } catch (err) {
       const message = formatActionError(err, "Unable to send message.");
       setPostCommentError(message);
       pushToast(message);
+      return false;
     } finally {
       setIsPostingComment(false);
-      taskCommentInputRef.current?.focus();
     }
   };
 
@@ -2285,6 +2305,8 @@ export default function BoardDetailPage() {
       const currentTags = [...(selectedTask.tag_ids ?? [])].sort().join("|");
       const nextTags = [...editTagIds].sort().join("|");
       const tagsChanged = currentTags !== nextTags;
+      const currentDueDate = toLocalDateInput(selectedTask.due_at);
+      const dueDateChanged = editDueDate !== currentDueDate;
 
       const updatePayload: Parameters<
         typeof updateTaskApiV1BoardsBoardIdTasksTaskIdPatch
@@ -2301,6 +2323,9 @@ export default function BoardDetailPage() {
       }
       if (tagsChanged) {
         updatePayload.tag_ids = editTagIds;
+      }
+      if (dueDateChanged) {
+        updatePayload.due_at = localDateInputToUtcIso(editDueDate);
       }
 
       const result = await updateTaskApiV1BoardsBoardIdTasksTaskIdPatch(
@@ -2362,6 +2387,7 @@ export default function BoardDetailPage() {
     setEditDescription(selectedTask.description ?? "");
     setEditStatus(selectedTask.status);
     setEditPriority(selectedTask.priority);
+    setEditDueDate(toLocalDateInput(selectedTask.due_at));
     setEditAssigneeId(selectedTask.assigned_agent_id ?? "");
     setEditTagIds(selectedTask.tag_ids ?? []);
     setEditDependsOnTaskIds(selectedTask.depends_on_task_ids ?? []);
@@ -3520,27 +3546,16 @@ export default function BoardDetailPage() {
                 Comments
               </p>
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <Textarea
-                  ref={taskCommentInputRef}
-                  value={newComment}
-                  onChange={(event) => setNewComment(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    if (event.nativeEvent.isComposing) return;
-                    if (event.shiftKey) return;
-                    if (!canWrite) return;
-                    event.preventDefault();
-                    if (isPostingComment) return;
-                    if (!newComment.trim()) return;
-                    void handlePostComment();
-                  }}
+                <BoardChatComposer
                   placeholder={
                     canWrite
-                      ? "Write a message for the assigned agent…"
+                      ? "Write a message for the assigned agent. Tag @lead or @name."
                       : "Read-only access. Comments are disabled."
                   }
-                  className="min-h-[80px] bg-white"
-                  disabled={!canWrite || isPostingComment}
+                  isSending={isPostingComment}
+                  onSend={handlePostComment}
+                  disabled={!canWrite}
+                  mentionSuggestions={boardChatMentionSuggestions}
                 />
                 {postCommentError ? (
                   <p className="text-xs text-rose-600">{postCommentError}</p>
@@ -3550,18 +3565,6 @@ export default function BoardDetailPage() {
                     Read-only access. You cannot post comments on this board.
                   </p>
                 ) : null}
-                <div className="flex justify-end">
-                  <Button
-                    size="sm"
-                    onClick={handlePostComment}
-                    disabled={
-                      !canWrite || isPostingComment || !newComment.trim()
-                    }
-                    title={canWrite ? "Send message" : "Read-only access"}
-                  >
-                    {isPostingComment ? "Sending…" : "Send message"}
-                  </Button>
-                </div>
               </div>
               {isCommentsLoading ? (
                 <p className="text-sm text-slate-500">Loading comments…</p>
@@ -3638,6 +3641,7 @@ export default function BoardDetailPage() {
               isSending={isChatSending}
               onSend={handleSendChat}
               disabled={!canWrite}
+              mentionSuggestions={boardChatMentionSuggestions}
               placeholder={
                 canWrite
                   ? "Message the board lead. Tag agents with @name."
@@ -3802,6 +3806,17 @@ export default function BoardDetailPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Due date
+                </label>
+                <Input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(event) => setEditDueDate(event.target.value)}
+                  disabled={!selectedTask || isSavingTask || !canWrite}
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -4093,6 +4108,17 @@ export default function BoardDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">
+                Due date
+              </label>
+              <Input
+                type="date"
+                value={createDueDate}
+                onChange={(event) => setCreateDueDate(event.target.value)}
+                disabled={!canWrite || isCreating}
+              />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">

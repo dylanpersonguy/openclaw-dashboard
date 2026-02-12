@@ -67,7 +67,10 @@ const renderMentionsInText = (text: string, keyPrefix: string): ReactNode => {
   return nodes;
 };
 
-const renderMentions = (content: ReactNode, keyPrefix = "mention"): ReactNode => {
+const renderMentions = (
+  content: ReactNode,
+  keyPrefix = "mention",
+): ReactNode => {
   if (typeof content === "string") {
     return renderMentionsInText(content, keyPrefix);
   }
