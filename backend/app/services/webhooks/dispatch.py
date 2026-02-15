@@ -17,9 +17,10 @@ from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.board_webhooks import BoardWebhook
 from app.models.boards import Board
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+from app.services.queue import QueuedTask
 from app.services.webhooks.queue import (
     QueuedInboundDelivery,
-    dequeue_webhook_delivery,
+    decode_webhook_task,
     requeue_if_failed,
 )
 
@@ -163,12 +164,31 @@ async def _process_single_item(item: QueuedInboundDelivery) -> None:
         await session.commit()
 
 
+def _compute_webhook_retry_delay(attempts: int) -> float:
+    base = settings.rq_dispatch_retry_base_seconds * (2 ** max(0, attempts))
+    return min(base, settings.rq_dispatch_retry_max_seconds)
+
+
+def _compute_webhook_retry_jitter(base_delay: float) -> float:
+    return random.uniform(0, min(settings.rq_dispatch_retry_max_seconds / 10, base_delay * 0.1))
+
+
+async def process_webhook_queue_task(task: QueuedTask) -> None:
+    item = decode_webhook_task(task)
+    await _process_single_item(item)
+
+
+def requeue_webhook_queue_task(task: QueuedTask, *, delay_seconds: float = 0) -> bool:
+    payload = decode_webhook_task(task)
+    return requeue_if_failed(payload, delay_seconds=delay_seconds)
+
+
 async def flush_webhook_delivery_queue(*, block: bool = False, block_timeout: float = 0) -> int:
     """Consume queued webhook events and notify board leads in a throttled batch."""
     processed = 0
     while True:
         try:
-            item = dequeue_webhook_delivery(block=block, block_timeout=block_timeout)
+            item = dequeue_webhook_delivery_task(block=block, block_timeout=block_timeout)
         except Exception:
             logger.exception("webhook.dispatch.dequeue_failed")
             continue
@@ -199,16 +219,32 @@ async def flush_webhook_delivery_queue(*, block: bool = False, block_timeout: fl
                     "error": str(exc),
                 },
             )
-            delay = min(
-                settings.rq_dispatch_retry_base_seconds * (2 ** max(0, item.attempts)),
-                settings.rq_dispatch_retry_max_seconds,
-            )
-            jitter = random.uniform(0, min(settings.rq_dispatch_retry_max_seconds / 10, delay * 0.1))
+            delay = _compute_webhook_retry_delay(item.attempts)
+            jitter = _compute_webhook_retry_jitter(delay)
             requeue_if_failed(item, delay_seconds=delay + jitter)
         await asyncio.sleep(settings.rq_dispatch_throttle_seconds)
     if processed > 0:
         logger.info("webhook.dispatch.batch_complete", extra={"count": processed})
     return processed
+
+
+def dequeue_webhook_delivery_task(
+    *,
+    block: bool = False,
+    block_timeout: float = 0,
+) -> QueuedInboundDelivery | None:
+    """Pop one queued webhook delivery payload."""
+    from app.services.queue import dequeue_task
+
+    task = dequeue_task(
+        settings.rq_queue_name,
+        redis_url=settings.rq_redis_url,
+        block=block,
+        block_timeout=block_timeout,
+    )
+    if task is None:
+        return None
+    return decode_webhook_task(task)
 
 
 def run_flush_webhook_delivery_queue() -> None:

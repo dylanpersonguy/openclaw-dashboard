@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import sys
 from pathlib import Path
 
@@ -13,19 +12,12 @@ sys.path.insert(0, str(ROOT_DIR))
 BACKEND_ROOT = ROOT_DIR / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.services.webhooks.dispatch import flush_webhook_delivery_queue
+from app.services.queue_worker import run_worker
 
 
 def cmd_worker(args: argparse.Namespace) -> int:
-    async def _run_forever() -> None:
-        while True:
-            await flush_webhook_delivery_queue(
-                block=True,
-                block_timeout=0,
-            )
-
     try:
-        asyncio.run(_run_forever())
+        run_worker()
     except KeyboardInterrupt:
         return 0
     return 0
@@ -37,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     worker_parser = subparsers.add_parser(
         "worker",
-        help="Continuously process queued webhook delivery work.",
+        help="Continuously process queued background work.",
     )
     worker_parser.set_defaults(func=cmd_worker)
 

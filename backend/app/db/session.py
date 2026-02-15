@@ -6,8 +6,6 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from alembic import command
-from alembic.config import Config
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
@@ -45,8 +43,10 @@ async_session_maker = async_sessionmaker(
 logger = get_logger(__name__)
 
 
-def _alembic_config() -> Config:
+def _alembic_config():
     alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
+    from alembic.config import Config
+
     alembic_cfg = Config(str(alembic_ini))
     alembic_cfg.attributes["configure_logger"] = False
     return alembic_cfg
@@ -54,6 +54,8 @@ def _alembic_config() -> Config:
 
 def run_migrations() -> None:
     """Apply Alembic migrations to the latest revision."""
+    from alembic import command
+
     logger.info("Running database migrations.")
     command.upgrade(_alembic_config(), "head")
     logger.info("Database migrations complete.")

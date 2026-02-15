@@ -143,7 +143,7 @@ api-gen: frontend-tooling ## Regenerate TS API client (requires backend running 
 	$(NODE_WRAP) --cwd $(FRONTEND_DIR) npm run api:gen
 
 .PHONY: rq-worker
-rq-worker: ## Run background webhook queue worker loop
+rq-worker: ## Run background queue worker loop
 	cd $(BACKEND_DIR) && uv run python ../scripts/rq worker
 
 .PHONY: backend-templates-sync

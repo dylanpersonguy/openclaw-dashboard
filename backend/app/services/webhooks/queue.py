@@ -40,7 +40,7 @@ def _task_from_payload(payload: QueuedInboundDelivery) -> QueuedTask:
     )
 
 
-def _payload_from_task(task: QueuedTask) -> QueuedInboundDelivery:
+def decode_webhook_task(task: QueuedTask) -> QueuedInboundDelivery:
     if task.task_type not in {TASK_TYPE, "legacy"}:
         raise ValueError(f"Unexpected task_type={task.task_type!r}; expected {TASK_TYPE!r}")
 
@@ -107,7 +107,7 @@ def dequeue_webhook_delivery(
         )
         if task is None:
             return None
-        return _payload_from_task(task)
+        return decode_webhook_task(task)
     except Exception as exc:
         logger.error(
             "webhook.queue.dequeue_failed",
