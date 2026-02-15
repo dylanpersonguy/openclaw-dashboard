@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -198,8 +199,13 @@ async def flush_webhook_delivery_queue(*, block: bool = False, block_timeout: fl
                     "error": str(exc),
                 },
             )
-            requeue_if_failed(item)
-        time.sleep(settings.rq_dispatch_throttle_seconds)
+            delay = min(
+                settings.rq_dispatch_retry_base_seconds * (2 ** max(0, item.attempts)),
+                settings.rq_dispatch_retry_max_seconds,
+            )
+            jitter = random.uniform(0, min(settings.rq_dispatch_retry_max_seconds / 10, delay * 0.1))
+            requeue_if_failed(item, delay_seconds=delay + jitter)
+        await asyncio.sleep(settings.rq_dispatch_throttle_seconds)
     if processed > 0:
         logger.info("webhook.dispatch.batch_complete", extra={"count": processed})
     return processed

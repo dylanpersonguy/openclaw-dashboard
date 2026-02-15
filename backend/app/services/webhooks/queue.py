@@ -119,7 +119,11 @@ def dequeue_webhook_delivery(
         raise
 
 
-def requeue_if_failed(payload: QueuedInboundDelivery) -> bool:
+def requeue_if_failed(
+    payload: QueuedInboundDelivery,
+    *,
+    delay_seconds: float = 0,
+) -> bool:
     """Requeue payload delivery with capped retries.
 
     Returns True if requeued.
@@ -130,6 +134,7 @@ def requeue_if_failed(payload: QueuedInboundDelivery) -> bool:
             settings.rq_queue_name,
             max_retries=settings.rq_dispatch_max_retries,
             redis_url=settings.rq_redis_url,
+            delay_seconds=delay_seconds,
         )
     except Exception as exc:
         logger.warning(

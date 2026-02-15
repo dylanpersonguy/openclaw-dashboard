@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import col, select
 
 from app.api.deps import get_board_for_user_read, get_board_for_user_write, get_board_or_404
+from app.core.logging import get_logger
 from app.core.config import settings
 from app.core.time import utcnow
 from app.db import crud
@@ -44,6 +45,7 @@ SESSION_DEP = Depends(get_session)
 BOARD_USER_READ_DEP = Depends(get_board_for_user_read)
 BOARD_USER_WRITE_DEP = Depends(get_board_for_user_write)
 BOARD_OR_404_DEP = Depends(get_board_or_404)
+logger = get_logger(__name__)
 
 
 def _webhook_endpoint_path(board_id: UUID, webhook_id: UUID) -> str:
@@ -403,6 +405,15 @@ async def ingest_board_webhook(
         board_id=board.id,
         webhook_id=webhook_id,
     )
+    logger.info(
+        "webhook.ingest.received",
+        extra={
+            "board_id": str(board.id),
+            "webhook_id": str(webhook.id),
+            "source_ip": request.client.host if request.client else None,
+            "content_type": request.headers.get("content-type"),
+        },
+    )
     if not webhook.enabled:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
@@ -437,6 +448,15 @@ async def ingest_board_webhook(
     )
     session.add(memory)
     await session.commit()
+    logger.info(
+        "webhook.ingest.persisted",
+        extra={
+            "payload_id": str(payload.id),
+            "board_id": str(board.id),
+            "webhook_id": str(webhook.id),
+            "memory_id": str(memory.id),
+        },
+    )
 
     enqueued = enqueue_webhook_delivery(
         QueuedInboundDelivery(
@@ -445,6 +465,15 @@ async def ingest_board_webhook(
             payload_id=payload.id,
             received_at=payload.received_at,
         ),
+    )
+    logger.info(
+        "webhook.ingest.enqueued",
+        extra={
+            "payload_id": str(payload.id),
+            "board_id": str(board.id),
+            "webhook_id": str(webhook.id),
+            "enqueued": enqueued,
+        },
     )
     if not enqueued:
         # Preserve historical behavior by still notifying synchronously if queueing fails.

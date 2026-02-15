@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     rq_queue_name: str = "default"
     rq_dispatch_throttle_seconds: float = 2.0
     rq_dispatch_max_retries: int = 3
+    rq_dispatch_retry_base_seconds: float = 10.0
+    rq_dispatch_retry_max_seconds: float = 120.0
 
     # Logging
     log_level: str = "INFO"

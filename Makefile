@@ -142,12 +142,9 @@ frontend-build: frontend-tooling ## Build frontend (next build)
 api-gen: frontend-tooling ## Regenerate TS API client (requires backend running at 127.0.0.1:8000)
 	$(NODE_WRAP) --cwd $(FRONTEND_DIR) npm run api:gen
 
-WEBHOOK_WORKER_INTERVAL_SECONDS ?= 2
-
 .PHONY: rq-worker
-rq-worker: ## Run background queue worker loop (optional WEBHOOK_WORKER_INTERVAL_SECONDS)
-	cd $(BACKEND_DIR) && uv run python ../scripts/rq worker \
-		--interval-seconds "$(WEBHOOK_WORKER_INTERVAL_SECONDS)"
+rq-worker: ## Run background webhook queue worker loop
+	cd $(BACKEND_DIR) && uv run python ../scripts/rq worker
 
 .PHONY: backend-templates-sync
 backend-templates-sync: ## Sync templates to existing gateway agents (usage: make backend-templates-sync GATEWAY_ID=<uuid> SYNC_ARGS="--reset-sessions")
