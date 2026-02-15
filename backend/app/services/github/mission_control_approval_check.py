@@ -21,7 +21,7 @@ A periodic reconciliation job should call the sync functions as a safety net.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlmodel import col, select
@@ -360,7 +360,8 @@ async def reconcile_github_approval_checks_for_board(
         .where(col(TaskCustomFieldDefinition.organization_id) == org_id)
         .where(col(TaskCustomFieldDefinition.field_key) == "github_pr_url")
     )
-    rows = list(await session.exec(stmt))
+    raw_rows = list(await session.exec(stmt))
+    rows = cast(list[tuple[object]], raw_rows)
 
     pr_urls: set[str] = set()
     for (value,) in rows:
@@ -383,11 +384,12 @@ async def reconcile_mission_control_approval_checks_for_all_boards() -> int:
     """
 
     async with async_session_maker() as session:
-        board_ids = list(
+        raw_board_ids = list(
             await session.exec(
                 select(col(Board.id)).order_by(col(Board.created_at).asc()),
             ),
         )
+        board_ids = cast(list[UUID], raw_board_ids)
         processed = 0
         for board_id in board_ids:
             try:

@@ -83,13 +83,14 @@ async def get_pull_request_head_sha(pr: ParsedPullRequest) -> str:
     head = data.get("head")
     if not isinstance(head, dict) or not isinstance(head.get("sha"), str):
         raise GitHubClientError("GitHub PR response missing head.sha")
-    return head["sha"]
+    # mypy: dict indexing returns Any; we've validated it's a str above.
+    return str(head["sha"])
 
 
 async def _find_check_run_id(*, owner: str, repo: str, ref: str, check_name: str) -> int | None:
     # Docs: GET /repos/{owner}/{repo}/commits/{ref}/check-runs
     url = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{ref}/check-runs"
-    params = {"check_name": check_name, "per_page": 100}
+    params: dict[str, str | int] = {"check_name": check_name, "per_page": 100}
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(url, headers=_auth_headers(), params=params)
     if resp.status_code >= 400:
