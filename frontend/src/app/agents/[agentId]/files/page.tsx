@@ -27,6 +27,11 @@ import {
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import type { AgentRead } from "@/api/generated/model";
 
+type AgentFile = {
+  name: string;
+  editable: boolean;
+};
+
 export default function AgentFilesPage() {
   const { isSignedIn } = useAuth();
   const router = useRouter();
@@ -36,7 +41,7 @@ export default function AgentFilesPage() {
 
   const { isAdmin } = useOrganizationMembership(isSignedIn);
 
-  const [files, setFiles] = useState<Array<{ name: string; editable: boolean }>>([]);
+  const [files, setFiles] = useState<AgentFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);

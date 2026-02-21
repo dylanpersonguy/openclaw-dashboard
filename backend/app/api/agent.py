@@ -24,6 +24,7 @@ from app.models.boards import Board
 from app.models.tags import Tag
 from app.models.task_dependencies import TaskDependency
 from app.models.tasks import Task
+from app.schemas.agent_files import AgentFileUpdate
 from app.schemas.agents import (
     AgentCreate,
     AgentHeartbeat,
@@ -1695,7 +1696,7 @@ async def read_agent_file(
 async def update_agent_file(
     agent_id: str,
     filename: str,
-    payload: dict[str, str],
+    payload: AgentFileUpdate,
     board: Board = BOARD_DEP,
     session: AsyncSession = SESSION_DEP,
     agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
@@ -1706,17 +1707,14 @@ async def update_agent_file(
     """
     _guard_board_access(agent_ctx, board)
     _require_board_lead(agent_ctx)
-    
-    content = payload.get("content", "")
-    reason = payload.get("reason")
-    
+
     coordination = GatewayCoordinationService(session)
     await coordination.update_agent_file(
         board=board,
         target_agent_id=agent_id,
         filename=filename,
-        content=content,
-        reason=reason,
+        content=payload.content,
+        reason=payload.reason,
         actor_agent_id=agent_ctx.agent.id,
         correlation_id=f"file.write:{board.id}:{agent_id}:{filename}",
     )
