@@ -14,4 +14,5 @@ export interface GatewayUpdate {
   token?: string | null;
   workspace_root?: string | null;
   allow_insecure_tls?: boolean | null;
+  disable_device_pairing?: boolean | null;
 }

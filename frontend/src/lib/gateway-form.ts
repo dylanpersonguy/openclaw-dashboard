@@ -24,10 +24,16 @@ export const validateGatewayUrl = (value: string) => {
 export async function checkGatewayConnection(params: {
   gatewayUrl: string;
   gatewayToken: string;
+  gatewayDisableDevicePairing: boolean;
 }): Promise<{ ok: boolean; message: string }> {
   try {
-    const requestParams: Record<string, string> = {
+    const requestParams: {
+      gateway_url: string;
+      gateway_token?: string;
+      gateway_disable_device_pairing: boolean;
+    } = {
       gateway_url: params.gatewayUrl.trim(),
+      gateway_disable_device_pairing: params.gatewayDisableDevicePairing,
     };
     if (params.gatewayToken.trim()) {
       requestParams.gateway_token = params.gatewayToken.trim();

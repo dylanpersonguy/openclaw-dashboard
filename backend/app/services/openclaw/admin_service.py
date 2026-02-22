@@ -27,6 +27,7 @@ from app.services.openclaw.db_agent_state import (
     mint_agent_token,
 )
 from app.services.openclaw.db_service import OpenClawDBService
+from app.services.openclaw.error_messages import normalize_gateway_error_message
 from app.services.openclaw.gateway_compat import check_gateway_runtime_compatibility
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
@@ -168,7 +169,10 @@ class GatewayAdminLifecycleService(OpenClawDBService):
         if not gateway.url:
             return False
         config = GatewayClientConfig(
-            url=gateway.url, token=gateway.token, allow_insecure_tls=gateway.allow_insecure_tls
+            url=gateway.url,
+            token=gateway.token,
+            allow_insecure_tls=gateway.allow_insecure_tls,
+            disable_device_pairing=gateway.disable_device_pairing,
         )
         target_id = GatewayAgentIdentity.openclaw_agent_id(gateway)
         try:
@@ -181,16 +185,27 @@ class GatewayAdminLifecycleService(OpenClawDBService):
         return True
 
     async def assert_gateway_runtime_compatible(
-        self, *, url: str, token: str | None, allow_insecure_tls: bool = False
+        self,
+        *,
+        url: str,
+        token: str | None,
+        allow_insecure_tls: bool = False,
+        disable_device_pairing: bool = False,
     ) -> None:
         """Validate that a gateway runtime meets minimum supported version."""
-        config = GatewayClientConfig(url=url, token=token, allow_insecure_tls=allow_insecure_tls)
+        config = GatewayClientConfig(
+            url=url,
+            token=token,
+            allow_insecure_tls=allow_insecure_tls,
+            disable_device_pairing=disable_device_pairing,
+        )
         try:
             result = await check_gateway_runtime_compatibility(config)
         except OpenClawGatewayError as exc:
+            detail = normalize_gateway_error_message(str(exc))
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Gateway compatibility check failed: {exc}",
+                detail=f"Gateway compatibility check failed: {detail}",
             ) from exc
         if not result.compatible:
             raise HTTPException(

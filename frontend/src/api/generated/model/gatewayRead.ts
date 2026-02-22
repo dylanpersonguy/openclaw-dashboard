@@ -13,6 +13,7 @@ export interface GatewayRead {
   url: string;
   workspace_root: string;
   allow_insecure_tls: boolean;
+  disable_device_pairing?: boolean;
   id: string;
   organization_id: string;
   token?: string | null;

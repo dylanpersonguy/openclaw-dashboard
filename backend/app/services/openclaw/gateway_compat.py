@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
-from app.services.openclaw.gateway_rpc import GatewayConfig, OpenClawGatewayError, openclaw_call
+from app.services.openclaw.gateway_rpc import (
+    GatewayConfig,
+    OpenClawGatewayError,
+    openclaw_call,
+    openclaw_connect_metadata,
+)
 
 _VERSION_PATTERN = re.compile(r"(?i)v?(?P<version>\d+(?:\.\d+)+)")
 _PRIMARY_VERSION_PATHS: tuple[tuple[str, ...], ...] = (
@@ -192,12 +197,27 @@ async def _fetch_schema_metadata(config: GatewayConfig) -> object | None:
         return None
 
 
+async def _fetch_connect_metadata(config: GatewayConfig) -> object | None:
+    try:
+        return await openclaw_connect_metadata(config=config)
+    except OpenClawGatewayError:
+        return None
+
+
 async def check_gateway_runtime_compatibility(
     config: GatewayConfig,
     *,
     minimum_version: str | None = None,
 ) -> GatewayVersionCheckResult:
     """Fetch runtime metadata and evaluate gateway version compatibility."""
+    connect_payload = await _fetch_connect_metadata(config)
+    current_version = extract_gateway_version(connect_payload)
+    if current_version is not None:
+        return evaluate_gateway_version(
+            current_version=current_version,
+            minimum_version=minimum_version,
+        )
+
     schema_payload = await _fetch_schema_metadata(config)
     current_version = extract_gateway_version(schema_payload)
     if current_version is not None:

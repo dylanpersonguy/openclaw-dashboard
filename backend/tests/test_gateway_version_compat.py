@@ -50,6 +50,11 @@ async def test_check_gateway_runtime_compatibility_prefers_schema_version(
             return {"version": "2026.2.13"}
         raise AssertionError(f"unexpected method: {method}")
 
+    async def _fake_connect_metadata(*, config: GatewayConfig) -> object | None:
+        _ = config
+        return None
+
+    monkeypatch.setattr(gateway_compat, "openclaw_connect_metadata", _fake_connect_metadata)
     monkeypatch.setattr(gateway_compat, "openclaw_call", _fake_openclaw_call)
 
     result = await gateway_compat.check_gateway_runtime_compatibility(
@@ -60,6 +65,34 @@ async def test_check_gateway_runtime_compatibility_prefers_schema_version(
     assert calls == ["config.schema"]
     assert result.compatible is True
     assert result.current_version == "2026.2.13"
+
+
+@pytest.mark.asyncio
+async def test_check_gateway_runtime_compatibility_prefers_connect_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def _fake_connect_metadata(*, config: GatewayConfig) -> object | None:
+        _ = config
+        return {"server": {"version": "2026.2.21-2"}}
+
+    async def _fake_openclaw_call(method: str, params: object = None, *, config: object) -> object:
+        _ = (params, config)
+        calls.append(method)
+        raise AssertionError(f"unexpected method: {method}")
+
+    monkeypatch.setattr(gateway_compat, "openclaw_connect_metadata", _fake_connect_metadata)
+    monkeypatch.setattr(gateway_compat, "openclaw_call", _fake_openclaw_call)
+
+    result = await gateway_compat.check_gateway_runtime_compatibility(
+        GatewayConfig(url="ws://gateway.example/ws"),
+        minimum_version="2026.1.30",
+    )
+
+    assert calls == []
+    assert result.compatible is True
+    assert result.current_version == "2026.2.21-2"
 
 
 @pytest.mark.asyncio
@@ -77,6 +110,11 @@ async def test_check_gateway_runtime_compatibility_falls_back_to_health(
             raise OpenClawGatewayError("unknown method")
         return {"version": "2026.2.0"}
 
+    async def _fake_connect_metadata(*, config: GatewayConfig) -> object | None:
+        _ = config
+        return None
+
+    monkeypatch.setattr(gateway_compat, "openclaw_connect_metadata", _fake_connect_metadata)
     monkeypatch.setattr(gateway_compat, "openclaw_call", _fake_openclaw_call)
 
     result = await gateway_compat.check_gateway_runtime_compatibility(
@@ -104,6 +142,11 @@ async def test_check_gateway_runtime_compatibility_uses_health_when_status_has_n
             return {"uptime": 1234}
         return {"version": "2026.2.0"}
 
+    async def _fake_connect_metadata(*, config: GatewayConfig) -> object | None:
+        _ = config
+        return None
+
+    monkeypatch.setattr(gateway_compat, "openclaw_connect_metadata", _fake_connect_metadata)
     monkeypatch.setattr(gateway_compat, "openclaw_call", _fake_openclaw_call)
 
     result = await gateway_compat.check_gateway_runtime_compatibility(
@@ -158,6 +201,24 @@ async def test_admin_service_maps_gateway_transport_errors(
 
 
 @pytest.mark.asyncio
+async def test_admin_service_maps_gateway_scope_errors_with_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_check(config: GatewayConfig, *, minimum_version: str | None = None) -> object:
+        _ = (config, minimum_version)
+        raise OpenClawGatewayError("missing scope: operator.read")
+
+    monkeypatch.setattr(admin_service, "check_gateway_runtime_compatibility", _fake_check)
+
+    service = GatewayAdminLifecycleService(session=object())  # type: ignore[arg-type]
+    with pytest.raises(HTTPException) as exc_info:
+        await service.assert_gateway_runtime_compatible(url="ws://gateway.example/ws", token=None)
+
+    assert exc_info.value.status_code == 502
+    assert "missing required scope `operator.read`" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_gateway_status_reports_incompatible_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -181,6 +242,28 @@ async def test_gateway_status_reports_incompatible_version(
 
     assert response.connected is False
     assert response.error == "Gateway version 2026.1.0 is not supported."
+
+
+@pytest.mark.asyncio
+async def test_gateway_status_surfaces_scope_error_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_check(config: GatewayConfig, *, minimum_version: str | None = None) -> object:
+        _ = (config, minimum_version)
+        raise OpenClawGatewayError("missing scope: operator.read")
+
+    monkeypatch.setattr(session_service, "check_gateway_runtime_compatibility", _fake_check)
+
+    service = GatewaySessionService(session=object())  # type: ignore[arg-type]
+    response = await service.get_status(
+        params=GatewayResolveQuery(gateway_url="ws://gateway.example/ws"),
+        organization_id=uuid4(),
+        user=None,
+    )
+
+    assert response.connected is False
+    assert response.error is not None
+    assert "missing required scope `operator.read`" in response.error
 
 
 @pytest.mark.asyncio

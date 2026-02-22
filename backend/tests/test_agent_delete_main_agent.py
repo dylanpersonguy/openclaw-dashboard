@@ -43,6 +43,7 @@ class _GatewayStub:
     url: str
     token: str | None
     workspace_root: str
+    disable_device_pairing: bool = False
 
 
 @pytest.mark.asyncio

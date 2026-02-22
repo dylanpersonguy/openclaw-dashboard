@@ -974,6 +974,7 @@ def _control_plane_for_gateway(gateway: Gateway) -> OpenClawGatewayControlPlane:
             url=gateway.url,
             token=gateway.token,
             allow_insecure_tls=gateway.allow_insecure_tls,
+            disable_device_pairing=gateway.disable_device_pairing,
         ),
     )
 
@@ -1104,7 +1105,10 @@ class OpenClawGatewayProvisioner:
             return
 
         client_config = GatewayClientConfig(
-            url=gateway.url, token=gateway.token, allow_insecure_tls=gateway.allow_insecure_tls
+            url=gateway.url,
+            token=gateway.token,
+            allow_insecure_tls=gateway.allow_insecure_tls,
+            disable_device_pairing=gateway.disable_device_pairing,
         )
         await ensure_session(session_key, config=client_config, label=agent.name)
         verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")

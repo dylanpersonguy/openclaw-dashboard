@@ -20,6 +20,7 @@ from app.schemas.gateway_api import (
     GatewaysStatusResponse,
 )
 from app.services.openclaw.db_service import OpenClawDBService
+from app.services.openclaw.error_messages import normalize_gateway_error_message
 from app.services.openclaw.gateway_compat import check_gateway_runtime_compatibility
 from app.services.openclaw.gateway_resolver import gateway_client_config, require_gateway_for_board
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
@@ -64,11 +65,13 @@ class GatewaySessionService(OpenClawDBService):
         board_id: str | None,
         gateway_url: str | None,
         gateway_token: str | None,
+        gateway_disable_device_pairing: bool = False,
     ) -> GatewayResolveQuery:
         return GatewayResolveQuery(
             board_id=board_id,
             gateway_url=gateway_url,
             gateway_token=gateway_token,
+            gateway_disable_device_pairing=gateway_disable_device_pairing,
         )
 
     @staticmethod
@@ -109,6 +112,7 @@ class GatewaySessionService(OpenClawDBService):
                 GatewayClientConfig(
                     url=raw_url,
                     token=(params.gateway_token or "").strip() or None,
+                    disable_device_pairing=params.gateway_disable_device_pairing,
                 ),
                 None,
             )
@@ -195,7 +199,7 @@ class GatewaySessionService(OpenClawDBService):
             return GatewaysStatusResponse(
                 connected=False,
                 gateway_url=config.url,
-                error=str(exc),
+                error=normalize_gateway_error_message(str(exc)),
             )
         if not compatibility.compatible:
             return GatewaysStatusResponse(
@@ -234,7 +238,7 @@ class GatewaySessionService(OpenClawDBService):
             return GatewaysStatusResponse(
                 connected=False,
                 gateway_url=config.url,
-                error=str(exc),
+                error=normalize_gateway_error_message(str(exc)),
             )
 
     async def get_sessions(
