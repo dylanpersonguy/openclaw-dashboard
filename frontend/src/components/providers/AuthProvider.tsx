@@ -7,6 +7,7 @@ import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
 import {
   clearLocalAuthToken,
   getLocalAuthToken,
+  isLocalAuthBypassed,
   isLocalAuthMode,
 } from "@/auth/localAuth";
 import { LocalAuthLogin } from "@/components/organisms/LocalAuthLogin";
@@ -21,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [localMode]);
 
   if (localMode) {
-    if (!getLocalAuthToken()) {
+    if (!getLocalAuthToken() && !isLocalAuthBypassed()) {
       return <LocalAuthLogin />;
     }
     return <>{children}</>;
