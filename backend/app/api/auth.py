@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import AuthContext, get_auth_context
+from app.core.auth_mode import AuthMode
+from app.core.config import settings
 from app.schemas.errors import LLMErrorResponse
 from app.schemas.users import UserRead
 
@@ -60,3 +62,22 @@ async def bootstrap_user(auth: AuthContext = AUTH_CONTEXT_DEP) -> UserRead:
     if auth.actor_type != "user" or auth.user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     return UserRead.model_validate(auth.user)
+
+
+@router.get(
+    "/local-status",
+    summary="Check local auth token requirement",
+    description=(
+        "Public endpoint (no auth required). Returns whether token-less "
+        "login is available in local auth mode."
+    ),
+)
+async def local_auth_status() -> dict[str, object]:
+    """Report whether local auth mode allows token-less login."""
+    if settings.auth_mode != AuthMode.LOCAL:
+        return {"bypass_available": False, "reason": "Auth mode is not local."}
+    token_required = bool(settings.local_auth_token.strip())
+    return {
+        "bypass_available": not token_required,
+        "reason": "Token is configured." if token_required else "No token configured.",
+    }

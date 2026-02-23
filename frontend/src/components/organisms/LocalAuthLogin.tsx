@@ -52,22 +52,27 @@ async function canBypassToken(): Promise<{ ok: boolean; error?: string }> {
     return { ok: false, error: "NEXT_PUBLIC_API_URL is not set." };
   }
   try {
-    const response = await fetch(`${baseUrl}/api/v1/users/me`, {
+    const response = await fetch(`${baseUrl}/api/v1/auth/local-status`, {
       method: "GET",
     });
-    if (response.ok) {
-      return { ok: true };
-    }
-    if (response.status === 401 || response.status === 403) {
+    if (!response.ok) {
       return {
         ok: false,
-        error:
-          "Backend requires a token. Set LOCAL_AUTH_TOKEN in your .env or provide a token above.",
+        error: `Backend returned an error (HTTP ${response.status}). Check backend logs.`,
       };
+    }
+    const data = (await response.json()) as {
+      bypass_available?: boolean;
+      reason?: string;
+    };
+    if (data.bypass_available) {
+      return { ok: true };
     }
     return {
       ok: false,
-      error: `Backend returned an error (HTTP ${response.status}). Check backend logs.`,
+      error:
+        data.reason ??
+        "Backend requires a token. Set LOCAL_AUTH_TOKEN in your .env or provide a token above.",
     };
   } catch {
     return { ok: false, error: "Unable to reach backend." };
