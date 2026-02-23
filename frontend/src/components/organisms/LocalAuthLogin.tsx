@@ -55,7 +55,20 @@ async function canBypassToken(): Promise<{ ok: boolean; error?: string }> {
     const response = await fetch(`${baseUrl}/api/v1/users/me`, {
       method: "GET",
     });
-    return { ok: response.ok };
+    if (response.ok) {
+      return { ok: true };
+    }
+    if (response.status === 401 || response.status === 403) {
+      return {
+        ok: false,
+        error:
+          "Backend requires a token. Set LOCAL_AUTH_TOKEN in your .env or provide a token above.",
+      };
+    }
+    return {
+      ok: false,
+      error: `Backend returned an error (HTTP ${response.status}). Check backend logs.`,
+    };
   } catch {
     return { ok: false, error: "Unable to reach backend." };
   }
@@ -106,10 +119,7 @@ export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
     const result = await canBypassToken();
     setIsBypassing(false);
     if (!result.ok) {
-      setError(
-        result.error ??
-          "Backend requires a token. Set LOCAL_AUTH_TOKEN in your .env or provide a token above.",
-      );
+      setError(result.error ?? "An unexpected error occurred.");
       return;
     }
     setLocalAuthBypassed();
