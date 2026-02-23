@@ -1,6 +1,6 @@
-# Mission Control Backend (FastAPI)
+# Dashboard Backend (FastAPI)
 
-This directory contains the **Mission Control backend API** (FastAPI + SQLModel) and its database migrations (Alembic).
+This directory contains the **Dashboard backend API** (FastAPI + SQLModel) and its database migrations (Alembic).
 
 - Default API base URL: http://localhost:8000
 - Health endpoints: `/healthz`, `/readyz`

@@ -2,7 +2,7 @@ from app.core.version import APP_NAME, APP_VERSION
 
 
 def test_app_name_constant() -> None:
-    assert APP_NAME == "mission-control"
+    assert APP_NAME == "dashboard"
 
 
 def test_app_version_semver_format() -> None:

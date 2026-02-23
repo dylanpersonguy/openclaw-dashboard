@@ -1,11 +1,11 @@
-# OpenClaw Mission Control
+# OpenClaw Dashboard
 
 [![CI](https://github.com/abhi1693/openclaw-mission-control/actions/workflows/ci.yml/badge.svg)](https://github.com/abhi1693/openclaw-mission-control/actions/workflows/ci.yml) ![Static Badge](https://img.shields.io/badge/Join-Slack-active?style=flat&color=blue&link=https%3A%2F%2Fjoin.slack.com%2Ft%2Foc-mission-control%2Fshared_invite%2Fzt-3qpcm57xh-AI9C~smc3MDBVzEhvwf7gg)
 
-OpenClaw Mission Control is the centralized operations and governance platform for running OpenClaw across teams and organizations, with unified visibility, approval controls, and gateway-aware orchestration.
+OpenClaw Dashboard is the centralized operations and governance platform for running OpenClaw across teams and organizations, with unified visibility, approval controls, and gateway-aware orchestration.
 It gives operators a single interface for work orchestration, agent and gateway management, approval-driven governance, and API-backed automation.
 
-<img width="1896" height="869" alt="Mission Control dashboard" src="https://github.com/user-attachments/assets/49a3c823-6aaf-4c56-8328-fb1485ee940f" />
+<img width="1896" height="869" alt="Dashboard" src="https://github.com/user-attachments/assets/49a3c823-6aaf-4c56-8328-fb1485ee940f" />
 <img width="1896" height="858" alt="image" src="https://github.com/user-attachments/assets/2bfee13a-3dab-4f4a-9135-e47bb6949dcf" />
 <img width="1890" height="865" alt="image" src="https://github.com/user-attachments/assets/84c2e867-5dc7-4a36-9290-e29179d2a659" />
 <img width="1912" height="881" alt="image" src="https://github.com/user-attachments/assets/3bbd825c-9969-4bbf-bf31-987f9168f370" />
@@ -13,7 +13,7 @@ It gives operators a single interface for work orchestration, agent and gateway 
 
 ## Platform overview
 
-Mission Control is designed to be the day-to-day operations surface for OpenClaw.
+Dashboard is designed to be the day-to-day operations surface for OpenClaw.
 Instead of splitting work across multiple tools, teams can plan, execute, review, and audit activity in one system.
 
 Core operational areas:
@@ -33,7 +33,7 @@ Core operational areas:
 - Audit and incident review: use activity history to reconstruct what happened, when it happened, and who initiated it.
 - API-backed process integration: connect internal workflows and automation clients to the same operational model used in the UI.
 
-## What makes Mission Control different
+## What makes Dashboard different
 
 - Operations-first design: built for running agent work reliably, not just creating tasks.
 - Governance built in: approvals, auth modes, and clear control boundaries are first-class.
@@ -90,7 +90,7 @@ Before startup:
 - Set `LOCAL_AUTH_TOKEN` to a non-placeholder value (minimum 50 characters) when `AUTH_MODE=local`.
 - Ensure `NEXT_PUBLIC_API_URL` is reachable from your browser.
 
-### 2. Start Mission Control
+### 2. Start Dashboard
 
 ```bash
 docker compose -f compose.yml --env-file .env up -d --build
@@ -98,7 +98,7 @@ docker compose -f compose.yml --env-file .env up -d --build
 
 ### 3. Open the application
 
-- Mission Control UI: http://localhost:3000
+- Dashboard UI: http://localhost:3000
 - Backend health: http://localhost:8000/healthz
 
 ### 4. Stop the stack
@@ -109,7 +109,7 @@ docker compose -f compose.yml --env-file .env down
 
 ## Authentication
 
-Mission Control supports two authentication modes:
+Dashboard supports two authentication modes:
 
 - `local`: shared bearer token mode (default for self-hosted use)
 - `clerk`: Clerk JWT mode
@@ -126,7 +126,7 @@ Complete guides for deployment, production, troubleshooting, and testing are in 
 
 ## Project status
 
-Mission Control is under active development.
+Dashboard is under active development.
 
 - Features and APIs may change between releases.
 - Validate and harden your configuration before production use.

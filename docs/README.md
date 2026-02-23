@@ -1,6 +1,6 @@
-# Mission Control docs
+# Dashboard docs
 
-This folder is the starting point for Mission Control documentation.
+This folder is the starting point for Dashboard documentation.
 
 ## Sections
 

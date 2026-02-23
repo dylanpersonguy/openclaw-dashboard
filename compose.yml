@@ -1,4 +1,4 @@
-name: openclaw-mission-control
+name: openclaw-dashboard
 
 services:
   db:

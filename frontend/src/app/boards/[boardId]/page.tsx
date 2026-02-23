@@ -4561,7 +4561,7 @@ export default function BoardDetailPage() {
                   to board chat.
                 </li>
                 <li>
-                  Mission Control forwards it to all agents on this board.
+                  Dashboard forwards it to all agents on this board.
                 </li>
               </ul>
             </div>

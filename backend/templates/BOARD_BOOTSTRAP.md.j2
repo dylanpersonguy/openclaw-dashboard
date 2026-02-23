@@ -48,7 +48,7 @@ curl -fsS "{{ base_url }}/healthz" >/dev/null
 - `BASE_URL={{ base_url }}`
 - `AUTH_TOKEN={{ auth_token }}`
 - `BOARD_ID={{ board_id }}`
-to Mission Control to mark the agent online:
+to Dashboard to mark the agent online:
 
 ```bash
 curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \

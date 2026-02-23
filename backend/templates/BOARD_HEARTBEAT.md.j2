@@ -29,13 +29,13 @@ jq -r '
 ' /tmp/openapi.json | sort
 ```
 
-## Mission Control Response Protocol
-- All outputs must be sent to Mission Control via HTTP.
+## Dashboard Response Protocol
+- All outputs must be sent to Dashboard via HTTP.
 - Always include: `X-Agent-Token: {{ auth_token }}`
 
 ## Schedule
 - If a heartbeat schedule is configured, send a lightweight check-in only.
-- Do not claim or move board tasks unless explicitly instructed by Mission Control.
+- Do not claim or move board tasks unless explicitly instructed by Dashboard.
 - If you have any pending `LEAD REQUEST: ASK USER` messages in OpenClaw chat, handle them promptly (see AGENTS.md).
 
 ## Heartbeat checklist

@@ -1,6 +1,6 @@
-# Contributing to OpenClaw Mission Control
+# Contributing to OpenClaw Dashboard
 
-Thanks for your interest in improving Mission Control.
+Thanks for your interest in improving Dashboard.
 
 This repo welcomes contributions in three broad categories:
 

@@ -1,1 +1,1 @@
-"""OpenClaw Mission Control backend application package."""
+"""OpenClaw Dashboard backend application package."""
