@@ -3,20 +3,23 @@
 import { useState } from "react";
 import { Lock } from "lucide-react";
 
-import { setLocalAuthToken } from "@/auth/localAuth";
+import { setLocalAuthToken, setLocalAuthBypassed } from "@/auth/localAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 const LOCAL_AUTH_TOKEN_MIN_LENGTH = 50;
 
+function getBaseUrl(): string | null {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  return raw ? raw.replace(/\/+$/, "") : null;
+}
+
 async function validateLocalToken(token: string): Promise<string | null> {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (!rawBaseUrl) {
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
     return "NEXT_PUBLIC_API_URL is not set.";
   }
-
-  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
   let response: Response;
   try {
@@ -39,6 +42,25 @@ async function validateLocalToken(token: string): Promise<string | null> {
   return `Unable to validate token (HTTP ${response.status}).`;
 }
 
+/**
+ * Check whether the backend accepts unauthenticated requests (i.e.
+ * LOCAL_AUTH_TOKEN is not configured on the server).
+ */
+async function canBypassToken(): Promise<{ ok: boolean; error?: string }> {
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
+    return { ok: false, error: "NEXT_PUBLIC_API_URL is not set." };
+  }
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/users/me`, {
+      method: "GET",
+    });
+    return { ok: response.ok };
+  } catch {
+    return { ok: false, error: "Unable to reach backend." };
+  }
+}
+
 type LocalAuthLoginProps = {
   onAuthenticated?: () => void;
 };
@@ -49,6 +71,7 @@ export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [isBypassing, setIsBypassing] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -74,6 +97,22 @@ export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
 
     setLocalAuthToken(cleaned);
     setError(null);
+    (onAuthenticated ?? defaultOnAuthenticated)();
+  };
+
+  const handleBypass = async () => {
+    setIsBypassing(true);
+    setError(null);
+    const result = await canBypassToken();
+    setIsBypassing(false);
+    if (!result.ok) {
+      setError(
+        result.error ??
+          "Backend requires a token. Set LOCAL_AUTH_TOKEN in your .env or provide a token above.",
+      );
+      return;
+    }
+    setLocalAuthBypassed();
     (onAuthenticated ?? defaultOnAuthenticated)();
   };
 
@@ -136,9 +175,24 @@ export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
               type="submit"
               className="w-full"
               size="lg"
-              disabled={isValidating}
+              disabled={isValidating || isBypassing}
             >
               {isValidating ? "Validating..." : "Continue"}
+            </Button>
+            <div className="relative my-2 flex items-center">
+              <div className="flex-grow border-t border-[color:var(--border)]" />
+              <span className="mx-3 text-xs text-muted">or</span>
+              <div className="flex-grow border-t border-[color:var(--border)]" />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              size="lg"
+              disabled={isValidating || isBypassing}
+              onClick={handleBypass}
+            >
+              {isBypassing ? "Checking..." : "Continue without token"}
             </Button>
           </form>
         </CardContent>

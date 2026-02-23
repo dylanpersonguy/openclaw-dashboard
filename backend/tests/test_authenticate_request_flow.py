@@ -146,3 +146,52 @@ async def test_get_auth_context_optional_local_mode_returns_none_without_token(
         session=_FakeSession(),  # type: ignore[arg-type]
     )
     assert out is None
+
+
+@pytest.mark.asyncio
+async def test_get_auth_context_local_mode_auto_authenticates_without_token_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When LOCAL_AUTH_TOKEN is blank, requests are auto-authenticated."""
+    monkeypatch.setattr(auth.settings, "auth_mode", AuthMode.LOCAL)
+    monkeypatch.setattr(auth.settings, "local_auth_token", "")
+
+    async def _fake_local_user(_session: Any) -> User:
+        return User(clerk_user_id="local-auth-user", email="local@localhost", name="Local User")
+
+    monkeypatch.setattr(auth, "_get_or_create_local_user", _fake_local_user)
+
+    # No Authorization header at all — should still succeed.
+    ctx = await auth.get_auth_context(  # type: ignore[arg-type]
+        request=SimpleNamespace(headers={}),
+        credentials=None,
+        session=_FakeSession(),  # type: ignore[arg-type]
+    )
+
+    assert ctx.actor_type == "user"
+    assert ctx.user is not None
+    assert ctx.user.clerk_user_id == "local-auth-user"
+
+
+@pytest.mark.asyncio
+async def test_get_auth_context_optional_local_mode_auto_authenticates_without_token_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Optional variant also auto-authenticates when no token is configured."""
+    monkeypatch.setattr(auth.settings, "auth_mode", AuthMode.LOCAL)
+    monkeypatch.setattr(auth.settings, "local_auth_token", "")
+
+    async def _fake_local_user(_session: Any) -> User:
+        return User(clerk_user_id="local-auth-user", email="local@localhost", name="Local User")
+
+    monkeypatch.setattr(auth, "_get_or_create_local_user", _fake_local_user)
+
+    out = await auth.get_auth_context_optional(  # type: ignore[arg-type]
+        request=SimpleNamespace(headers={}),
+        credentials=None,
+        session=_FakeSession(),  # type: ignore[arg-type]
+    )
+
+    assert out is not None
+    assert out.user is not None
+    assert out.user.clerk_user_id == "local-auth-user"

@@ -10,16 +10,15 @@ from app.core.auth_mode import AuthMode
 from app.core.config import Settings
 
 
-def test_local_mode_requires_non_empty_token() -> None:
-    with pytest.raises(
-        ValidationError,
-        match="LOCAL_AUTH_TOKEN must be at least 50 characters and non-placeholder when AUTH_MODE=local",
-    ):
-        Settings(
-            _env_file=None,
-            auth_mode=AuthMode.LOCAL,
-            local_auth_token="",
-        )
+def test_local_mode_allows_empty_token() -> None:
+    """An empty LOCAL_AUTH_TOKEN is valid — it disables token validation."""
+    s = Settings(
+        _env_file=None,
+        auth_mode=AuthMode.LOCAL,
+        local_auth_token="",
+    )
+    assert s.auth_mode == AuthMode.LOCAL
+    assert s.local_auth_token == ""
 
 
 def test_local_mode_requires_minimum_length() -> None:

@@ -16,10 +16,14 @@ import {
 } from "@clerk/nextjs";
 
 import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
-import { getLocalAuthToken, isLocalAuthMode } from "@/auth/localAuth";
+import {
+  getLocalAuthToken,
+  isLocalAuthMode,
+  isLocalAuthBypassed,
+} from "@/auth/localAuth";
 
 function hasLocalAuthToken(): boolean {
-  return Boolean(getLocalAuthToken());
+  return isLocalAuthBypassed() || Boolean(getLocalAuthToken());
 }
 
 export function isClerkEnabled(): boolean {

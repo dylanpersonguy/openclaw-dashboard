@@ -80,13 +80,15 @@ class Settings(BaseSettings):
                 )
         elif self.auth_mode == AuthMode.LOCAL:
             token = self.local_auth_token.strip()
-            if (
-                not token
-                or len(token) < LOCAL_AUTH_TOKEN_MIN_LENGTH
+            # When LOCAL_AUTH_TOKEN is blank, local mode runs without token
+            # validation (convenient for local dev).  When set, enforce quality.
+            if token and (
+                len(token) < LOCAL_AUTH_TOKEN_MIN_LENGTH
                 or token.lower() in LOCAL_AUTH_TOKEN_PLACEHOLDERS
             ):
                 raise ValueError(
-                    "LOCAL_AUTH_TOKEN must be at least 50 characters and non-placeholder when AUTH_MODE=local.",
+                    "LOCAL_AUTH_TOKEN must be at least 50 characters and non-placeholder when AUTH_MODE=local "
+                    "(or leave it blank to disable token validation).",
                 )
         # In dev, default to applying Alembic migrations at startup to avoid
         # schema drift (e.g. missing newly-added columns).

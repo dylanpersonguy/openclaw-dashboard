@@ -413,13 +413,19 @@ async def _resolve_local_auth_context(
     session: AsyncSession,
     required: bool,
 ) -> AuthContext | None:
+    expected = settings.local_auth_token.strip()
+    # When no token is configured, skip validation entirely and
+    # auto-authenticate as the local user (convenient for local dev).
+    if not expected:
+        user = await _get_or_create_local_user(session)
+        return AuthContext(actor_type="user", user=user)
+
     token = _extract_bearer_token(request.headers.get("Authorization"))
     if token is None:
         if required:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
         return None
-    expected = settings.local_auth_token.strip()
-    if not expected or not compare_digest(token, expected):
+    if not compare_digest(token, expected):
         if required:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
         return None
